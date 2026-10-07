@@ -16,7 +16,7 @@ Un panel privado en `https://wyeleeassembly.com.au/crm` que:
 5. **Acceso solo por enlace mágico** enviado al correo (sin contraseñas).
 6. **Anti-spam con Google reCAPTCHA v3** (invisible) en `/quote/` y `/contact/`: lo que parece bot se guarda **retenido como spam**, sin aviso por correo y fuera del pipeline, y se puede recuperar con un clic (§6.9).
 
-Idioma: el panel está en **español** (para el equipo); todo lo que ve el cliente final (formularios, plantillas de WhatsApp/SMS) está en **inglés**.
+Idioma: el panel está en **español y en inglés**, según la persona (Juan en español, Ken en inglés; §6.10). Los correos del sistema llegan en el idioma de quien los recibe. Todo lo que ve el cliente final (sitio, formularios, plantillas de WhatsApp/SMS/correo al cliente) está siempre en **inglés**.
 
 ---
 
@@ -85,13 +85,14 @@ Regenerar el sitio tras editar `_src/*.html` o `_build.py`: `python _build.py` y
 | `TURSO_AUTH_TOKEN` | Sí | Token de la base Turso (§5.2). |
 | `RESEND_API_KEY` | Sí (sin ella no salen correos: ni magic link, ni notificaciones, ni recordatorios) | `re_…` desde resend.com → API Keys. |
 | `MAIL_FROM` | Recomendada | Remitente. Por defecto `Wyelee <onboarding@resend.dev>`, que **solo entrega al correo del dueño de la cuenta Resend**. Tras verificar el dominio (§5.3): `Wyelee <crm@wyeleeassembly.com.au>` (cualquier buzón del dominio sirve; no necesita existir). |
-| `ADMIN_EMAIL` | Recomendada | Primer administrador (recibe magic link y notificaciones). Por defecto `juan.garcia@wearedatalab.co`. Solo se usa al crear la base (seed). |
-| `ADMIN_EMAIL_2` | Opcional | Segundo administrador ("Ken Leong"). Por defecto `Kenleong23@wyeleeassembly.com.au`. Solo en el seed. |
+| `ADMIN_EMAIL` | Recomendada | Primer administrador (recibe magic link y notificaciones). Por defecto `juan.garcia@wearedatalab.co`. Se usa al crear la base (seed, idioma `es`) y para el idioma por defecto de los usuarios existentes (§6.10): ese correo queda en `es`, el resto en `en`. |
+| `ADMIN_EMAIL_2` | Opcional | Segundo administrador ("Ken Leong"). Por defecto `Kenleong23@wyeleeassembly.com.au`. Solo en el seed (idioma `en`). |
 | `CRON_SECRET` | Recomendada | Cadena aleatoria larga. Protege `GET /api/cron/tasks`; Vercel la envía sola como `Authorization: Bearer …` en sus crons cuando la variable existe en el proyecto. |
 | `APP_URL` | Recomendada | `https://wyeleeassembly.com.au`. Base de los enlaces en los correos (magic link, "Abrir la ficha"). Si falta se deduce de las cabeceras `x-forwarded-*` (podría salir el alias `wyelee.vercel.app`). Su dominio también se acepta como origen válido de los tokens de reCAPTCHA. |
 | `RECAPTCHA_SECRET` | Para activar el anti-spam | **Clave secreta** de reCAPTCHA v3 (google.com/recaptcha/admin). Solo aquí: nunca en el panel, en la BD, en el código ni en los logs. Sin ella el servidor no verifica (los leads entran como siempre). §6.9. |
 | `RECAPTCHA_SITE_KEY` | Opcional | Clave de sitio (pública). Si existe, **manda sobre** la que se guarde en *Integraciones* (el campo del panel aparece deshabilitado). Lo normal es dejarla vacía y ponerla en el panel. |
 | `RECAPTCHA_VERIFY_URL` | No (solo pruebas) | Por defecto `https://www.google.com/recaptcha/api/siteverify`. Existe solo para apuntar a un stub local en pruebas; **no definirla en Vercel**. |
+| `RESEND_API_URL` | No (solo pruebas) | Por defecto `https://api.resend.com/emails`. Existe solo para apuntar a un stub local y ver los correos sin enviarlos (con `RESEND_API_KEY=re_stub`); **no definirla en Vercel**. |
 | `PORT` | Solo local | Puerto del `server.js` (8834). |
 | `SITE_DIR` | Solo local | Carpeta del sitio estático si no es la raíz del repo. |
 | `NODE_ENV` / `VERCEL` | Automáticas | Con `VERCEL` o `NODE_ENV=production` la app se considera en producción: cookies `Secure`, sin `devLink`, HSTS. |
@@ -171,7 +172,7 @@ Actualizaciones de código: editar en `wyelee/` → (si se tocó `_src/` o `_bui
 
 1. Abrir `https://wyeleeassembly.com.au/crm`.
 2. Escribir el correo con el que está dado de alta → *Enviar enlace de acceso*.
-3. Abrir el correo "Tu acceso al panel" y pulsar *Entrar al panel*. El enlace sirve **una sola vez** y caduca a los **15 minutos**; si caducó, el panel muestra "El enlace caducó o ya se usó": pedir otro.
+3. Abrir el correo "Tu acceso al panel" (en inglés: "Your Wyelee panel sign-in link") y pulsar *Entrar al panel*. El enlace sirve **una sola vez** y caduca a los **15 minutos**; si caducó, el panel muestra "El enlace caducó o ya se usó": pedir otro.
 4. La sesión dura **7 días** en ese navegador. *Cerrar sesión* en la barra superior.
 
 Si el correo no está registrado el panel responde igual ("Revisa tu correo") pero no llega nada: un administrador debe crearlo en *Usuarios* (§6.7).
@@ -208,9 +209,9 @@ Sirven para no olvidar seguimientos: "llamar en 2 horas", "confirmar visita mañ
 
 **Cómo llega el aviso** — hay tres capas, para que el recordatorio llegue sí o sí:
 
-1. **Correo a la hora exacta.** Al crear la tarea, el servidor programa en Resend un correo "⏰ Recordatorio: <tarea> — <lead>" para la fecha/hora de vencimiento (`scheduled_at`). Destinatario: el **responsable** de la tarea; si es "cualquiera", **todos los administradores activos**. El correo lleva la tarea, los datos del lead (móvil y correo como enlaces), la hora en horario de Adelaide y el botón *Abrir la ficha*. Al marcar la tarea como hecha antes de la hora, o al cambiarle fecha/responsable, el correo programado se cancela (y se reprograma si procede). Resend solo permite programar hasta ~30 días; más allá actúa la capa 2.
+1. **Correo a la hora exacta.** Al crear la tarea, el servidor programa en Resend un correo "⏰ Recordatorio: <tarea> — <lead>" para la fecha/hora de vencimiento (`scheduled_at`). Destinatario: el **responsable** de la tarea; si es "cualquiera", **todos los administradores activos** (cada uno en su idioma: un correo programado por idioma, §6.10). El correo lleva la tarea, los datos del lead (móvil y correo como enlaces), la hora en horario de Adelaide y el botón *Abrir la ficha*. Al marcar la tarea como hecha antes de la hora, o al cambiarle fecha/responsable, el correo programado se cancela (y se reprograma si procede). Resend solo permite programar hasta ~30 días; más allá actúa la capa 2.
 2. **Respaldo automático.** Cada vez que alguien tiene el panel abierto (consulta cada 60 s) y una vez al día con el cron de Vercel (07:30/08:30 Adelaide), el servidor envía por correo cualquier tarea abierta ya vencida que todavía no tuviera correo enviado. Así el aviso llega aunque la programación hubiera fallado o la tarea se hubiera creado sin `RESEND_API_KEY`.
-3. **En el panel.** Al vencer, aparece un aviso fijo en la esquina superior derecha ("⏰ <tarea> — <lead>", con *Ver lead* y *Hecha*) que no desaparece solo; el título de la pestaña pasa a "(n) Wyelee CRM"; el menú *Tareas* muestra un contador (vencidas + de hoy). Con el botón *Activar avisos del navegador* (vista *Tareas*) también salta una notificación del sistema operativo.
+3. **En el panel.** Al vencer, aparece un aviso fijo en la esquina inferior derecha ("⏰ <tarea> — <lead>", con *Ver lead* y *Hecha*) que no desaparece solo; el título de la pestaña pasa a "(n) Wyelee CRM"; el menú *Tareas* muestra un contador (vencidas + de hoy). Con el botón *Activar avisos del navegador* (vista *Tareas*) también salta una notificación del sistema operativo.
 
 Requisitos para que el correo llegue: `RESEND_API_KEY` configurada, `MAIL_FROM` con el dominio verificado (§5.3) y que el responsable tenga su correo real en *Usuarios*.
 
@@ -236,7 +237,7 @@ Tiempos: el JSON se cachea (60 s en el navegador, 5 min en el CDN), y el sitio l
 
 ### 6.7 Usuarios
 
-Solo administradores. *Usuarios* → *Nuevo*: nombre, correo, rol.
+Solo administradores. *Usuarios* → *Nuevo*: nombre, correo, rol e idioma (inglés por defecto; §6.10).
 
 - **Administrador**: todo, incluidos usuarios, redirecciones, integraciones y borrar leads. Recibe las notificaciones de leads nuevos y los recordatorios de tareas sin responsable.
 - **Comercial**: pipeline, leads, tareas y estadísticas.
@@ -281,6 +282,18 @@ Si el secreto está en Vercel pero falta la clave de sitio, el servidor deja la 
 
 Los leads retenidos no caducan: se acumulan en *Spam* hasta que un administrador los elimine.
 
+### 6.10 Idioma del panel / Panel language
+
+El panel funciona en **español** y en **inglés**. El idioma es **de cada persona** (columna `users.lang`, `es` | `en`), no del navegador ni de la instalación.
+
+- **Por defecto**: el administrador principal (`ADMIN_EMAIL`, Juan) en español; Ken y cualquier otro usuario existente en inglés. Los usuarios nuevos se crean en inglés salvo que se elija otro idioma en *Usuarios* (un administrador puede cambiar el de cualquiera).
+- **Cambiar el idioma**: conmutador **ES | EN** en la barra lateral, junto al nombre. Se guarda en la cuenta (`PATCH /api/me {lang}`), así que se mantiene en cualquier navegador o dispositivo. En la pantalla de entrada (sin sesión) hay el mismo conmutador; ahí se usa la última elección de ese navegador o, si no hay, el idioma del navegador (español si empieza por `es`, si no inglés). Al entrar manda el idioma guardado en la cuenta.
+- **«Entrar como»**: el idioma es el del administrador que entró, no el del usuario suplantado; cambiarlo mientras se ayuda a alguien no toca el idioma (ni los correos) de esa persona.
+- **Correos del sistema en el idioma de quien los recibe**: el enlace de acceso, en el idioma de ese usuario; el recordatorio de tarea, en el del responsable (sin responsable: a cada administrador en el suyo); el aviso de nuevo lead y el de «recuperado de spam», un correo por idioma (los administradores se agrupan por su idioma; los correos extra de *Integraciones → Notificaciones* que no son usuarios del panel, en inglés). Fechas en horario de Adelaide con formato `es-CO` o `en-AU`. Quién recibe qué no cambia: solo el idioma. Los datos del cliente (nombre, artículos, notas) nunca se traducen.
+- **Lo que no cambia de idioma**: el sitio y todo lo que ve el cliente final (formularios, mensajes de error de `/api/public/*`, plantillas de WhatsApp/SMS/correo de las acciones rápidas) siguen siempre en inglés. Las notas que escribe el equipo se muestran tal cual se escribieron.
+- **Línea de tiempo**: las notas automáticas (lead recibido, creado a mano, tarea creada/hecha/reabierta, spam) se guardan en español como siempre y, desde esta versión, con sus datos en `lead_events.meta`; en inglés se muestran traducidas (las antiguas, sin `meta`, se traducen por patrón).
+- **Técnico**: el panel envía la cabecera `X-Wy-Lang: es|en` en cada llamada; el servidor responde los errores en ese idioma (si falta: el del usuario; sin sesión: español) con la forma `{ error: "<texto>", code: "<clave estable>" }`. `GET /api/meta` mantiene las etiquetas en español y añade `statusLabelsI18n`, `lossReasonsI18n`, `roleLabelsI18n` y `sourceLabelsI18n` con `{ es, en }`. La migración es automática al arrancar (`ALTER TABLE users ADD COLUMN lang`, `ALTER TABLE lead_events ADD COLUMN meta` + relleno idempotente de `lang`).
+
 ---
 
 ## 7. Seguridad
@@ -302,7 +315,7 @@ Los leads retenidos no caducan: se acumulan en *Spam* hasta que un administrador
 
 ## 8. Referencia rápida de la API
 
-Todas las respuestas son JSON. Base: `/api/…` (también `/crm/api/…`). Autenticación por cookie `wy_sid`. Rol mínimo: **P** = pública, **S** = con sesión, **A** = administrador.
+Todas las respuestas son JSON. Base: `/api/…` (también `/crm/api/…`). Autenticación por cookie `wy_sid`. Rol mínimo: **P** = pública, **S** = con sesión, **A** = administrador. Errores del panel: `{ error, code }` con `error` en el idioma de la cabecera `X-Wy-Lang` (o del usuario; §6.10); las rutas **P** del sitio responden en inglés.
 
 | Método y ruta | Rol | Descripción |
 |---|---|---|
@@ -310,8 +323,9 @@ Todas las respuestas son JSON. Base: `/api/…` (también `/crm/api/…`). Auten
 | `POST /api/public/lead` | P | Intake de formularios. Body `{ source, name, email, mobile, suburb, postcode, city, service, items, condition, days, time, addons, notes|message, contact, photos:[{name,type,data}], attribution, website, recaptcha }` → `201 { ok, id }` (también cuando queda retenido como spam). `recaptcha` = token v3 con acción = `source`. Guarda `spam`, `spam_reason`, `recaptcha_score` y `attribution.recaptcha = { verdict: ok|spam|unverified|off, score, action }`. |
 | `POST /api/auth/request` | P | `{ email }` → siempre `200 { ok:true }` (+ `devLink` solo en local). |
 | `GET /crm/auth/verify?token=` | P | Valida el enlace → cookie → `302 /crm` (`302 /crm#expired` si no vale). |
-| `POST /api/auth/logout` · `GET /api/me` · `POST /api/auth/stop-impersonate` | S | Sesión actual `{ id, name, email, role, impersonating }`. |
-| `GET /api/meta` | S | Constantes: estados, etiquetas, motivos, servicios, condiciones, extras, roles, `slaHours`. |
+| `POST /api/auth/logout` · `GET /api/me` · `POST /api/auth/stop-impersonate` | S | Sesión actual `{ id, name, email, role, lang, impersonating }` (`lang` = idioma de la persona; en «Entrar como», el del administrador). |
+| `PATCH /api/me` | S | `{ lang: 'es'|'en' }` guarda el idioma propio (panel + correos que recibe) → misma respuesta que `GET /api/me`; otro valor → `400 invalid_lang`. |
+| `GET /api/meta` | S | Constantes: estados, etiquetas, motivos, servicios, condiciones, extras, roles, `slaHours` (etiquetas en español, como siempre) + `langs`, `statusLabelsI18n`, `lossReasonsI18n`, `roleLabelsI18n`, `sourceLabelsI18n` (`{ es:{…}, en:{…} }`). |
 | `GET /api/leads?status=&q=&service=&city=&spam=` | S | `{ leads:[…], spamCount }`. `leads` (máx. 1000, `updated_at DESC`) con `owner_name`, `photos`, `hours_open`, `next_task`, `open_tasks`, `spam`, `spam_reason`, `recaptcha_score`; **excluye los retenidos como spam** salvo con `spam=1`, que devuelve solo esos. `spamCount` = total retenido. |
 | `POST /api/leads` | S | Lead manual (`source:'manual'`). |
 | `GET /api/leads/:id` | S | Ficha + `events[]` + `files[]` (sin binario). |
@@ -327,7 +341,7 @@ Todas las respuestas son JSON. Base: `/api/…` (también `/crm/api/…`). Auten
 | `PATCH /api/tasks/:id` | S | `{ done?, title?, due_at?, user_id? }`; cancela/reprograma el correo. |
 | `DELETE /api/tasks/:id` | S | Borra y cancela el correo programado. |
 | `GET /api/cron/tasks` | Bearer `CRON_SECRET` | Envía por correo las tareas vencidas sin aviso (`emailed=0`). Vercel lo llama a diario. |
-| `GET /api/users` · `POST /api/users` · `PATCH /api/users/:id` · `POST /api/users/:id/impersonate` | A | Gestión de usuarios y "Entrar como". |
+| `GET /api/users` · `POST /api/users` · `PATCH /api/users/:id` · `POST /api/users/:id/impersonate` | A | Gestión de usuarios y "Entrar como". Los usuarios incluyen `lang`; `POST` acepta `lang` (por defecto `en`) y `PATCH` lo cambia (`es`|`en`, otro valor → `400`). |
 | `GET/POST /api/redirects` · `PATCH/DELETE /api/redirects/:id` | A | Redirecciones. |
 | `GET /api/stats?month=YYYY-MM` | S | Embudo, KPIs (`avgHoursToQuote`, `slaRate`, `overdue`…), mensual, por servicio, por ciudad, motivos de pérdida. Todo **sin** los leads retenidos como spam; `spamCount` informativo. |
 | `GET /api/settings` · `PUT /api/settings` | A | Claves permitidas: `tracking_enabled`, `ga4_id`, `gtm_id`, `google_ads_id`, `google_ads_label`, `meta_pixel_id`, `tiktok_pixel_id`, `clarity_id`, `hotjar_id`, `custom_head`, `custom_body_start`, `custom_body_end`, `snippets` (JSON), `notify_emails`, `whatsapp_number`, `recaptcha_site_key`, `recaptcha_min_score` (0.1–0.9, por defecto `0.5`). Ambas respuestas añaden, de solo lectura: `recaptcha_secret_configured` (bool), `recaptcha_key_source` (`env`\|`setting`\|`none`) y `recaptcha_site_key_effective`. El secreto nunca se devuelve. |

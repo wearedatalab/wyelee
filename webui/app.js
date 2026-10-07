@@ -14,30 +14,31 @@ const state = {
 };
 
 // ---------- constantes (única fuente en el frontend; lib/app.js es la del backend) ----------
+// Las etiquetas visibles (estados, motivos, roles, orígenes, posiciones) salen del diccionario de i18n.js (es/en).
 const STATUSES = ['nuevo', 'contactado', 'cotizado', 'agendado', 'ganado', 'perdido'];
-const STATUS_LABELS = { nuevo: 'Nuevo', contactado: 'Contactado', cotizado: 'Cotizado', agendado: 'Agendado', ganado: 'Ganado', perdido: 'Perdido' };
 const STATUS_COLORS = { nuevo: 'var(--blue)', contactado: 'var(--amber)', cotizado: 'var(--violet)', agendado: 'var(--teal)', ganado: 'var(--green)', perdido: 'var(--red)' };
-const STATUS_META = Object.fromEntries(STATUSES.map((s) => [s, { label: STATUS_LABELS[s], color: STATUS_COLORS[s], cls: s }]));
+const statusLabel = (s) => tk('status', s, s);
+const STATUS_META = Object.fromEntries(STATUSES.map((s) => [s, { get label() { return statusLabel(s); }, color: STATUS_COLORS[s], cls: s }]));
 const LOSS_REASONS = { no_responde: 'No responde', precio: 'Precio', fuera_zona: 'Fuera de zona', fecha: 'No hay fecha disponible', spam: 'Spam', otro: 'Otro' };
 const SERVICES = { furniture: 'Furniture assembly', wardrobe: 'Wardrobe assembly', disassembly: 'Disassembly', kitchen: 'IKEA kitchen' };
 const CONDITIONS = { new: 'New in the box', partial: 'Partially assembled', assembled: 'Already assembled' };
 const ADDONS = { packaging: 'Packaging removal', anchoring: 'Wall anchoring', disassembly: 'Disassembly of old furniture' };
 const DAYS = { weekdays: 'Weekdays', weekend: 'Weekend', either: 'Either' };
 const TIMES = { morning: 'Morning', afternoon: 'Afternoon', either: 'Either' };
-const SOURCE_LABELS = { quote: 'Cotización', contact: 'Contacto', manual: 'Manual' };
-const SOURCE_SHORT = { quote: 'Web', contact: 'Contacto', manual: 'Manual' }; // etiqueta corta para la tarjeta del Kanban
+const srcLabel = (s) => (s ? tk('source', s, s) : '');       // Cotización / Contacto / Manual
+const srcShort = (s) => (s ? tk('sourceShort', s, s) : '');  // etiqueta corta para la tarjeta del Kanban
 const ROLES = ['admin', 'comercial'];
-const ROLE_LABELS = { admin: 'Administrador', comercial: 'Comercial' };
 const SLA_HOURS = 24;            // promesa del sitio: cotización en 24 h
 const DEFAULT_WA = '61432470313'; // número del negocio (settings.whatsapp_number)
 const ADMIN_VIEWS = ['users', 'redirects', 'integrations'];
 const VIEWS = ['kanban', 'leads', 'tasks', 'stats', 'users', 'redirects', 'integrations'];
-const SNIPPET_POSITIONS = { head: 'Inicio de <head>', body_start: 'Inicio de <body>', body_end: 'Fin de <body>' };
+const SNIPPET_POSITIONS = { head: 1, body_start: 1, body_end: 1 }; // claves válidas; la etiqueta es t('snip.pos.<clave>')
+const snipPosLabel = (k) => tk('snip.pos', k, k);
 
-const roleLabel = (r) => ROLE_LABELS[r] || r;
+const roleLabel = (r) => tk('role', r, r);
 const isAdmin = () => !!(state.me && state.me.role === 'admin');
-// El backend manda /api/meta con los mismos diccionarios; si viene, manda él.
-const lossReasons = () => (state.meta && state.meta.lossReasons) || LOSS_REASONS;
+// El backend manda /api/meta con las claves; las etiquetas visibles salen del diccionario del panel (es/en).
+const lossReasons = () => { const base = (state.meta && state.meta.lossReasons) || LOSS_REASONS; return Object.fromEntries(Object.keys(base).map((k) => [k, tk('loss', k, base[k])])); };
 const services = () => (state.meta && state.meta.services) || SERVICES;
 const lossLabel = (k) => lossReasons()[k] || k || '';
 const svcLabel = (k) => services()[k] || '';
@@ -59,23 +60,15 @@ const ICON = {
 };
 
 // ---------- reCAPTCHA / spam ----------
-// Motivos que guarda el backend (spam_reason) → texto del panel. 'score 0.1' se traduce aparte.
-const SPAM_REASONS = {
-  'no token': 'el navegador no envió la verificación de reCAPTCHA (bot que envía directo al servidor, o script bloqueado)',
-  'invalid token': 'token de reCAPTCHA inválido, caducado o reutilizado',
-  'action mismatch': 'la acción del token no corresponde a este formulario',
-  'hostname mismatch': 'el token se generó en un dominio que no es el del sitio',
-  'no score': 'Google no devolvió puntuación (¿clave que no es v3?)',
-  'unverified limit': 'Google no respondió y ya se habían aceptado sin verificar 3 envíos de esta IP (o 30 del sitio) en la última hora',
-  manual: 'marcado a mano desde el panel',
-};
-// Versión corta para la columna de la tabla (la larga va en la ficha)
-const SPAM_REASONS_SHORT = { 'no token': 'Sin token', 'invalid token': 'Token inválido', 'action mismatch': 'Acción no coincide', 'hostname mismatch': 'Dominio no autorizado', 'no score': 'Sin puntuación', 'unverified limit': 'Sin verificar (cupo)', manual: 'Marcado a mano' };
+// Motivos que guarda el backend (spam_reason) → texto del panel (diccionario spam.long.* / spam.short.*,
+// la corta para la columna de la tabla y la larga para la ficha). 'score 0.1' se traduce aparte.
+const SPAM_REASON_KEYS = ['no token', 'invalid token', 'action mismatch', 'hostname mismatch', 'no score', 'unverified limit', 'manual'];
 function spamReasonLabel(r, short) {
   const s = String(r || '').trim();
   const m = s.match(/^score\s+([\d.]+)$/);
-  if (m) return short ? 'Puntuación baja' : `puntuación ${m[1]}, por debajo del umbral`;
-  return (short ? SPAM_REASONS_SHORT[s] : SPAM_REASONS[s]) || s || (short ? 'Sin motivo' : 'sin motivo registrado');
+  if (m) return short ? t('spam.scoreShort') : t('spam.scoreLong', { s: m[1] });
+  if (SPAM_REASON_KEYS.includes(s)) return t(`spam.${short ? 'short' : 'long'}.${s.replace(/\s+/g, '_')}`);
+  return s || (short ? t('spam.noneShort') : t('spam.noneLong'));
 }
 function fmtScore(v) {
   if (v === null || v === undefined || v === '' || !isFinite(Number(v))) return '';
@@ -86,24 +79,28 @@ function fmtScore(v) {
 // ---------- utils ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const initials = (n) => (n || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-const leadName = (l) => String(l.name || '').trim() || '(sin nombre)';
+const leadName = (l) => String(l.name || '').trim() || t('lead.noName');
 const firstName = (l) => (String(l.name || '').trim().split(/\s+/)[0]) || 'there';
 const pad = (n) => String(n).padStart(2, '0');
-function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }); }
-function fmtDateTime(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleString('es', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
-function fmtMonth(m) { if (!m) return '—'; const [y, mo] = String(m).split('-'); return new Date(y, mo - 1, 1).toLocaleDateString('es', { month: 'short' }).replace('.', ''); }
-function fmtMonthLong(m) { if (!m) return '—'; const [y, mo] = String(m).split('-'); const d = new Date(y, mo - 1, 1).toLocaleDateString('es', { month: 'long', year: 'numeric' }); return d.charAt(0).toUpperCase() + d.slice(1); }
+// Fechas en el idioma del panel: 'es' (igual que siempre) / 'en-AU'. Zona horaria: la del navegador, como antes.
+// En inglés: día sin cero ("6 Oct") y reloj de 24 h, igual que las horas de tareas y avisos ("21:09"), no "09:19 pm".
+const dayOpt = () => (LANG === 'en' ? 'numeric' : '2-digit');
+const clockOpt = () => (LANG === 'en' ? { hourCycle: 'h23' } : {});
+function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString(dateLocale(), { day: dayOpt(), month: 'short', year: 'numeric' }); }
+function fmtDateTime(iso) { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleString(dateLocale(), { day: dayOpt(), month: 'short', hour: '2-digit', minute: '2-digit', ...clockOpt() }); }
+function fmtMonth(m) { if (!m) return '—'; const [y, mo] = String(m).split('-'); return new Date(y, mo - 1, 1).toLocaleDateString(dateLocale(), { month: 'short' }).replace('.', ''); }
+function fmtMonthLong(m) { if (!m) return '—'; const [y, mo] = String(m).split('-'); const d = new Date(y, mo - 1, 1).toLocaleDateString(dateLocale(), { month: 'long', year: 'numeric' }); return d.charAt(0).toUpperCase() + d.slice(1); }
 function fmtSize(b) { b = Number(b) || 0; return b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`; }
 function fmtHours(h) { if (!isFinite(h)) return '—'; if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`; return `${h < 10 ? Math.round(h * 10) / 10 : Math.round(h)} h`; }
 const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-// "hoy 15:00" · "mañana 09:00" · "12 ene 10:00"
+// "hoy 15:00" · "mañana 09:00" · "12 ene 10:00"  (en: "today 15:00" · "tomorrow 09:00" · "12 Jan 10:00")
 function fmtDue(iso) {
   if (!iso) return '—';
   const d = new Date(iso), now = new Date(), tom = new Date(now); tom.setDate(now.getDate() + 1);
   const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (sameDay(d, now)) return `hoy ${hm}`;
-  if (sameDay(d, tom)) return `mañana ${hm}`;
-  return `${d.toLocaleDateString('es', { day: '2-digit', month: 'short' }).replace('.', '')} ${hm}`;
+  if (sameDay(d, now)) return t('due.today', { hm });
+  if (sameDay(d, tom)) return t('due.tomorrow', { hm });
+  return `${d.toLocaleDateString(dateLocale(), { day: dayOpt(), month: 'short' }).replace('.', '')} ${hm}`;
 }
 function toLocalInput(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function hoursOpen(l) { if (typeof l.hours_open === 'number') return l.hours_open; return (Date.now() - new Date(l.created_at).getTime()) / 36e5; }
@@ -112,12 +109,12 @@ function slaHTML(l) {
   if (l.status === 'nuevo') {
     const left = SLA_HOURS - hoursOpen(l);
     return left > 0
-      ? `<span class="sla ok" title="Promesa del sitio: cotización en 24 h">Cotizar en ${Math.max(1, Math.ceil(left))}h</span>`
-      : `<span class="sla late" title="Lleva más de 24 h sin cotizar">Vencido +${Math.floor(-left)}h</span>`;
+      ? `<span class="sla ok" title="${esc(t('sla.okTitle'))}">${t('sla.ok', { h: Math.max(1, Math.ceil(left)) })}</span>`
+      : `<span class="sla late" title="${esc(t('sla.lateTitle'))}">${t('sla.late', { h: Math.floor(-left) })}</span>`;
   }
   if (l.quoted_at && l.created_at) {
     const h = (new Date(l.quoted_at) - new Date(l.created_at)) / 36e5;
-    return `<span class="sla ${h <= SLA_HOURS ? 'ok' : 'late'}" title="Tiempo hasta la cotización">Cotizado en ${fmtHours(h)}</span>`;
+    return `<span class="sla ${h <= SLA_HOURS ? 'ok' : 'late'}" title="${esc(t('sla.quotedTitle'))}">${t('sla.quoted', { t: fmtHours(h) })}</span>`;
   }
   return '';
 }
@@ -126,74 +123,115 @@ function waNumber(m) { let d = String(m || '').replace(/\D/g, ''); if (!d) retur
 function locLabel(l) { const a = [l.suburb, l.postcode].filter(Boolean).join(' '); const b = l.city || ''; return [a, b].filter(Boolean).join(', ') || '—'; }
 function addonsArr(l) { const a = l.addons; if (Array.isArray(a)) return a; return String(a || '').split(',').map((x) => x.trim()).filter(Boolean); }
 function chipService(l) {
-  if (!l.service) return `<span class="chip-service contact">${l.source === 'contact' ? 'Contacto' : 'Sin servicio'}</span>`;
+  if (!l.service) return `<span class="chip-service contact">${l.source === 'contact' ? t('chip.contact') : t('chip.noService')}</span>`;
   return `<span class="chip-service ${esc(l.service)}">${esc(svcLabel(l.service) || l.service)}</span>`;
 }
 const leadSearchText = (l) => [l.name, l.email, l.mobile, l.suburb, l.postcode, l.city, l.items].map((x) => x || '').join(' ').toLowerCase();
 // Usuarios asignables: la lista de /api/users (admin) o, si el comercial no puede verla, al menos yo mismo
 function usersForSelect() { const list = state.users.slice(); if (state.me && !list.some((u) => u.id === state.me.id)) list.unshift({ id: state.me.id, name: state.me.name }); return list; }
 function ownerOptions(selectedId) {
-  return ['<option value="">Sin asignar</option>', ...usersForSelect().map((u) => `<option value="${u.id}" ${u.id === selectedId ? 'selected' : ''}>${esc(u.name)}</option>`)].join('');
+  return [`<option value="">${t('common.unassigned')}</option>`, ...usersForSelect().map((u) => `<option value="${u.id}" ${u.id === selectedId ? 'selected' : ''}>${esc(u.name)}</option>`)].join('');
 }
-const statusPill = (st) => `<span class="status-pill st-${esc(st)}"><i class="dot"></i>${esc(STATUS_LABELS[st] || st)}</span>`;
+const statusPill = (st) => `<span class="status-pill st-${esc(st)}"><i class="dot"></i>${esc(statusLabel(st))}</span>`;
 
 const API_BASE = '/crm'; // el panel y su API cuelgan de /crm en el mismo dominio del sitio
 const fileURL = (leadId, fid) => `${API_BASE}/api/leads/${Number(leadId)}/files/${Number(fid)}`;
 async function api(method, path, body) {
-  const opt = { method, headers: {} };
+  const opt = { method, headers: { 'X-Wy-Lang': LANG } }; // el servidor responde sus mensajes en el idioma del panel
   if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
   const res = await fetch(API_BASE + path, opt);
   if (res.status === 401) { state.me = null; stopPolling(); renderLogin(); throw new Error('unauth'); }
   const data = (res.headers.get('content-type') || '').includes('json') ? await res.json() : null;
-  if (!res.ok) throw new Error((data && data.error) || res.statusText);
+  // El servidor responde { error: texto ya en el idioma del panel, code: clave estable } → se reconoce por code
+  if (!res.ok) { const err = new Error((data && data.error) || res.statusText); err.code = (data && data.code) || ''; throw err; }
   return data;
 }
 let toastT;
 function toast(msg, type = 'ok') {
-  const t = $('#toast'); t.textContent = msg; t.className = `toast show ${type}`;
-  clearTimeout(toastT); toastT = setTimeout(() => (t.className = 'toast'), 2600);
+  const el = $('#toast'); el.textContent = msg; el.className = `toast show ${type}`;
+  clearTimeout(toastT); toastT = setTimeout(() => (el.className = 'toast'), 2600);
+}
+
+// ============================================================
+//  IDIOMA DEL PANEL (es / en) — selector ES | EN en el login y en el pie del menú
+// ============================================================
+// Sin sesión manda localStorage/navegador (i18n.js); con sesión, users.lang (boot). Al cambiar: se guarda en
+// localStorage y en el usuario (PATCH /api/me {lang}) y se repinta la vista actual sin recargar (el hash no cambia).
+function langSwitchHTML(extraCls = '') {
+  return `<div class="lang-switch ${extraCls}" role="group" aria-label="${esc(t('lang.label'))}">${LANGS.map((l) =>
+    `<button type="button" data-lang="${l}" lang="${l}" title="${esc(t('lang.name.' + l))}" aria-pressed="${LANG === l}">${l.toUpperCase()}</button>`).join('')}</div>`;
+}
+function wireLangSwitch(scope) {
+  (scope || document).querySelectorAll('.lang-switch [data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang, { persist: true, focus: true })));
+}
+function setLang(l, opts = {}) {
+  if (!LANGS.includes(l)) return;
+  const changed = l !== LANG;
+  LANG = l; storeLang(l); document.documentElement.lang = l;
+  if (!changed) return;
+  if (state.me) {
+    const sb = $('#sidebar'); const wasOpen = !!(sb && sb.classList.contains('open'));
+    renderApp(); // repinta menú + vista actual (un modal abierto se cierra: se vuelve a abrir ya traducido)
+    if (wasOpen) { $('#sidebar').classList.add('open'); $('#menu-btn').setAttribute('aria-expanded', 'true'); }
+    repaintAlerts(); updateTitle();
+    // PATCH /api/me guarda el idioma de la persona real (en «Entrar como», el del administrador, no el del suplantado).
+    if (opts.persist) {
+      api('PATCH', '/api/me', { lang: l })
+        .then(() => { if (state.me) state.me.lang = l; })
+        .catch((e) => { if (e.message !== 'unauth') console.warn(`[wyelee] ${t('lang.persistFail')}:`, e.message); });
+    }
+  } else renderLogin();
+  if (opts.focus) { const b = document.querySelector(`.lang-switch [data-lang="${l}"]`); if (b) b.focus(); }
 }
 
 // ============================================================
 //  LOGIN (solo magic link)
 // ============================================================
+let loginResult = null; // última respuesta de /api/auth/request (para repintarla al cambiar de idioma)
+function magicResultHTML(r) {
+  // Mensaje neutro siempre — no revela si el correo existe.
+  let h = `<div class="magic-result"><b>${t('login.checkTitle')}</b><p>${t('login.checkBody')}</p>`;
+  if (r && r.devLink) h += `<span class="devtag" style="display:block;margin-bottom:8px">${t('login.devTag')}</span><a class="btn btn-primary btn-sm" href="${esc(r.devLink)}">${t('login.enter')}</a>`;
+  return h + '</div>';
+}
 function renderLogin() {
   stopPolling();
-  document.title = 'Wyelee · Panel';
+  document.title = t('app.title');
   const expired = location.hash === '#expired';
   const local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const prevEmail = $('#email') ? $('#email').value : '';
   root.innerHTML = `
   <div class="login-wrap">
     <div class="login-card">
-      <div class="login-logo"><img src="assets/logo.svg" alt="Wyelee"><span class="tag">Panel de cotizaciones</span></div>
-      <h1>Acceso al panel</h1>
-      <p class="sub">Escribe tu correo y te enviamos un enlace de acceso. Sin contraseñas.</p>
-      ${expired ? '<div class="login-alert">El enlace caducó o ya se usó. Pide uno nuevo.</div>' : ''}
+      ${langSwitchHTML('login-lang')}
+      <div class="login-logo"><img src="assets/logo.svg" alt="Wyelee"><span class="tag">${t('login.tag')}</span></div>
+      <h1>${t('login.h1')}</h1>
+      <p class="sub">${t('login.sub')}</p>
+      ${expired ? `<div class="login-alert">${t('login.expired')}</div>` : ''}
       <form id="login-form">
         <div class="field">
-          <label>Correo electrónico</label>
-          <input type="email" id="email" placeholder="tu@wyeleeassembly.com.au" required autocomplete="email">
+          <label for="email">${t('login.emailLabel')}</label>
+          <input type="email" id="email" placeholder="${esc(t('login.emailPh'))}" required autocomplete="email" value="${esc(prevEmail)}">
         </div>
-        <button class="btn btn-primary" style="width:100%" type="submit">Enviar enlace de acceso</button>
+        <button class="btn btn-primary" style="width:100%" type="submit">${t('login.submit')}</button>
       </form>
-      <div id="magic-out"></div>
-      ${local ? '<p class="login-note">Entorno local: sin <code>RESEND_API_KEY</code> el enlace no se envía por correo; aparece aquí abajo y en la consola del servidor.</p>' : ''}
+      <div id="magic-out">${loginResult ? magicResultHTML(loginResult) : ''}</div>
+      ${local ? `<p class="login-note">${t('login.localNote')}</p>` : ''}
     </div>
   </div>`;
+  wireLangSwitch(root);
 
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button');
     const email = $('#email').value.trim();
-    btn.disabled = true; btn.textContent = 'Enviando…';
+    btn.disabled = true; btn.textContent = t('login.sending');
     try {
       const r = await api('POST', '/api/auth/request', { email });
-      // Mensaje neutro siempre — no revela si el correo existe.
-      let h = '<div class="magic-result"><b>Revisa tu correo</b><p>Si el correo está registrado, te enviamos un enlace de acceso válido por 15 minutos y de un solo uso.</p>';
-      if (r && r.devLink) h += `<span class="devtag" style="display:block;margin-bottom:8px">Modo local (sin correo)</span><a class="btn btn-primary btn-sm" href="${esc(r.devLink)}">Entrar al panel →</a>`;
-      $('#magic-out').innerHTML = h + '</div>';
-    } catch (err) { toast('No se pudo solicitar el enlace', 'err'); }
-    btn.disabled = false; btn.textContent = 'Enviar enlace de acceso';
+      loginResult = r || {};
+      $('#magic-out').innerHTML = magicResultHTML(loginResult);
+    } catch (err) { toast(t('login.errRequest'), 'err'); }
+    btn.disabled = false; btn.textContent = t('login.submit');
   });
 }
 
@@ -202,13 +240,13 @@ function renderLogin() {
 // ============================================================
 function renderApp() {
   const navItems = [
-    ['kanban', 'Pipeline', ICON.kanban],
-    ['leads', 'Leads', ICON.leads],
-    ['tasks', 'Tareas', ICON.tasks],
-    ['stats', 'Estadísticas', ICON.stats],
-    ['users', 'Usuarios', ICON.users],
-    ['redirects', 'Redirecciones', ICON.redirect],
-    ['integrations', 'Integraciones', ICON.integrations],
+    ['kanban', t('nav.kanban'), ICON.kanban],
+    ['leads', t('nav.leads'), ICON.leads],
+    ['tasks', t('nav.tasks'), ICON.tasks],
+    ['stats', t('nav.stats'), ICON.stats],
+    ['users', t('nav.users'), ICON.users],
+    ['redirects', t('nav.redirects'), ICON.redirect],
+    ['integrations', t('nav.integrations'), ICON.integrations],
   ].filter(([k]) => isAdmin() || !ADMIN_VIEWS.includes(k));
   // Bloquea el acceso directo del comercial a vistas restringidas (y corrige el hash para que Atrás/F5 no vuelvan a intentarlo)
   if (!isAdmin() && ADMIN_VIEWS.includes(state.view)) {
@@ -219,8 +257,8 @@ function renderApp() {
   <div class="app">
     <aside class="sidebar" id="sidebar">
       <div class="side-top">
-        <a class="side-logo" href="#kanban"><img src="assets/logo.svg" alt="Wyelee"><span>Panel</span></a>
-        <button class="menu-btn" id="menu-btn" aria-label="Menú" aria-expanded="false">${ICON.menu}</button>
+        <a class="side-logo" href="#kanban"><img src="assets/logo.svg" alt="Wyelee"><span>${t('shell.panel')}</span></a>
+        <button class="menu-btn" id="menu-btn" aria-label="${esc(t('shell.menu'))}" aria-expanded="false">${ICON.menu}</button>
       </div>
       <nav id="nav">
         ${navItems.map(([k, label, icon]) => `
@@ -231,15 +269,16 @@ function renderApp() {
       <div class="side-foot">
         <div class="side-user">
           <span class="avatar">${initials(state.me.name)}</span>
-          <span><span class="nm">${esc(state.me.name)}</span><span class="rl">${roleLabel(state.me.role)}</span></span>
+          <span class="side-id"><span class="nm">${esc(state.me.name)}</span><span class="rl">${roleLabel(state.me.role)}</span></span>
+          ${langSwitchHTML()}
         </div>
-        <button class="nav-item" id="logout">${ICON.out}<span>Cerrar sesión</span></button>
+        <button class="nav-item" id="logout">${ICON.out}<span>${t('shell.logout')}</span></button>
       </div>
     </aside>
     <main class="main">
       ${state.me.impersonating ? `<div class="imp-bar">
-        <span class="imp-msg">${ICON.eye} Estás viendo el panel como <b>${esc(state.me.name)}</b> · ${roleLabel(state.me.role)}</span>
-        <button class="btn btn-sm imp-back" id="stop-imp">Volver a ${esc(state.me.impersonating.name)} →</button>
+        <span class="imp-msg">${ICON.eye} ${t('imp.msg', { name: esc(state.me.name), role: roleLabel(state.me.role) })}</span>
+        <button class="btn btn-sm imp-back" id="stop-imp">${t('imp.back', { name: esc(state.me.impersonating.name) })}</button>
       </div>` : ''}
       <div id="view"></div>
     </main>
@@ -258,8 +297,9 @@ function renderApp() {
   const stopImp = $('#stop-imp');
   if (stopImp) stopImp.addEventListener('click', async () => {
     try { await api('POST', '/api/auth/stop-impersonate'); location.reload(); }
-    catch (e) { toast('No se pudo volver a tu cuenta', 'err'); }
+    catch (e) { toast(t('imp.err'), 'err'); }
   });
+  wireLangSwitch($('#sidebar'));
 
   $('#badge-leads').textContent = state.leads.length || '';
   paintTaskBadge();
@@ -274,10 +314,10 @@ async function viewKanban() {
   const v = $('#view');
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">Pipeline de cotizaciones</span><h1>De la solicitud al montaje</h1></div>
+      <div><span class="ey">${t('kanban.ey')}</span><h1>${t('kanban.h1')}</h1></div>
       <div class="tools">
-        <div class="search">${ICON.search}<input id="k-search" placeholder="Buscar nombre, suburb, móvil…" value="${esc(state.q)}"></div>
-        <button class="btn btn-ghost btn-sm" id="new-lead">+ Lead manual</button>
+        <div class="search">${ICON.search}<input id="k-search" placeholder="${esc(t('kanban.searchPh'))}" value="${esc(state.q)}"></div>
+        <button class="btn btn-ghost btn-sm" id="new-lead">${t('lead.newManual')}</button>
       </div>
     </div>
     <div class="kanban" id="kanban"></div>`;
@@ -318,7 +358,7 @@ function colBodyHTML(st, items) {
   const shown = items.slice(0, limit);
   const rest = items.length - shown.length;
   const more = rest > 0
-    ? `<button class="col-more" data-status="${st}">↓ Ver ${Math.min(KANBAN_BLOCK, rest)} más · ${rest} restante${rest === 1 ? '' : 's'}</button>`
+    ? `<button class="col-more" data-status="${st}">${t('kanban.more', { k: Math.min(KANBAN_BLOCK, rest), n: rest })}</button>`
     : '';
   return shown.map(cardHTML).join('') + more;
 }
@@ -345,7 +385,7 @@ function wireKanbanMore(board, leads) {
 }
 
 function cardHTML(l) {
-  const loss = l.status === 'perdido' && l.loss_reason ? `<span class="chip loss" title="Motivo de pérdida: ${esc(lossLabel(l.loss_reason))}">${esc(lossLabel(l.loss_reason))}</span>` : '';
+  const loss = l.status === 'perdido' && l.loss_reason ? `<span class="chip loss" title="${esc(t('card.lossTitle', { r: lossLabel(l.loss_reason) }))}">${esc(lossLabel(l.loss_reason))}</span>` : '';
   const loc = [l.suburb, l.postcode].filter(Boolean).join(' ') || l.city || '—';
   const nt = l.next_task
     ? `<span class="tk-clock ${new Date(l.next_task.due_at) < new Date() ? 'late' : ''}" title="${esc(l.next_task.title)}">📞 ${fmtDue(l.next_task.due_at)}</span>`
@@ -354,11 +394,11 @@ function cardHTML(l) {
   <div class="card" draggable="true" data-id="${l.id}">
     <div class="nm" title="${esc(leadName(l))}">${esc(leadName(l))}</div>
     <div class="tags">${chipService(l)}${l.status === 'nuevo' ? slaHTML(l) : ''}${loss}</div>
-    <div class="meta"><span title="${esc(locLabel(l))}">${esc(loc)}</span><span>${fmtDate(l.created_at)}</span>${l.photos ? `<span class="photos-n" title="${l.photos} foto${l.photos === 1 ? '' : 's'}">${ICON.photo}${l.photos}</span>` : ''}</div>
+    <div class="meta"><span title="${esc(locLabel(l))}">${esc(loc)}</span><span>${fmtDate(l.created_at)}</span>${l.photos ? `<span class="photos-n" title="${esc(t('card.photos', { n: l.photos }))}">${ICON.photo}${l.photos}</span>` : ''}</div>
     ${nt ? `<div class="meta">${nt}</div>` : ''}
     <div class="foot">
-      <span class="own">${l.owner_name ? `<span class="av">${initials(l.owner_name)}</span><span class="own-nm">${esc(l.owner_name.split(' ')[0])}</span>` : '<span class="own-nm" style="color:var(--mute)">Sin asignar</span>'}</span>
-      <span class="src" title="${esc(SOURCE_LABELS[l.source] || l.source || '')}">${esc(SOURCE_SHORT[l.source] || l.source || '')}</span>
+      <span class="own">${l.owner_name ? `<span class="av">${initials(l.owner_name)}</span><span class="own-nm">${esc(l.owner_name.split(' ')[0])}</span>` : `<span class="own-nm" style="color:var(--mute)">${t('common.unassigned')}</span>`}</span>
+      <span class="src" title="${esc(srcLabel(l.source))}">${esc(srcShort(l.source))}</span>
     </div>
   </div>`;
 }
@@ -390,8 +430,8 @@ async function changeStatus(id, status, loss_reason) {
     if (state.view === 'kanban') paintKanban();
     else if (state.view === 'leads') paintLeads();
     else if (state.view === 'leadDetail') viewLeadDetail(id);
-    toast(`Lead → ${STATUS_LABELS[status] || status}`);
-  } catch (e) { if (e.message !== 'unauth') toast('No se pudo actualizar', 'err'); }
+    toast(t('lead.moved', { s: statusLabel(status) }));
+  } catch (e) { if (e.message !== 'unauth') toast(t('common.errUpdate'), 'err'); }
 }
 
 // ============================================================
@@ -401,19 +441,19 @@ async function viewLeads() {
   const v = $('#view');
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">Base de datos</span><h1>Leads</h1></div>
+      <div><span class="ey">${t('leads.ey')}</span><h1>${t('leads.h1')}</h1></div>
       <div class="tools">
-        <div class="search">${ICON.search}<input id="l-search" placeholder="Buscar nombre, correo, móvil…" value="${esc(state.q)}"></div>
-        <button class="btn btn-ghost btn-sm" id="new-lead">+ Lead manual</button>
+        <div class="search">${ICON.search}<input id="l-search" placeholder="${esc(t('leads.searchPh'))}" value="${esc(state.q)}"></div>
+        <button class="btn btn-ghost btn-sm" id="new-lead">${t('lead.newManual')}</button>
       </div>
     </div>
     <div class="filters" id="filters">
-      ${['all', ...STATUSES].map((f) => `<button class="fbtn ${state.filter === f ? 'active' : ''}" data-f="${f}">${f === 'all' ? 'Todos' : STATUS_LABELS[f]}</button>`).join('')}
+      ${['all', ...STATUSES].map((f) => `<button class="fbtn ${state.filter === f ? 'active' : ''}" data-f="${f}">${f === 'all' ? t('leads.all') : statusLabel(f)}</button>`).join('')}
       <span class="fsep" aria-hidden="true"></span>
-      <button class="fbtn fbtn-spam ${state.filter === 'spam' ? 'active' : ''}" data-f="spam" title="Leads retenidos por reCAPTCHA: sin aviso por correo y fuera del pipeline">${ICON.shield}Spam <span class="n" id="spam-n">(${Number(state.spamCount) || 0})</span></button>
+      <button class="fbtn fbtn-spam ${state.filter === 'spam' ? 'active' : ''}" data-f="spam" title="${esc(t('leads.spamTitle'))}">${ICON.shield}${t('leads.spam')} <span class="n" id="spam-n">(${Number(state.spamCount) || 0})</span></button>
       <span class="spacer"></span>
-      <select class="sel" id="fl-service" title="Filtrar por servicio"></select>
-      <select class="sel" id="fl-city" title="Filtrar por ciudad"></select>
+      <select class="sel" id="fl-service" title="${esc(t('leads.fServiceTitle'))}"></select>
+      <select class="sel" id="fl-city" title="${esc(t('leads.fCityTitle'))}"></select>
     </div>
     <div class="panel"><div id="leads-table"></div></div>`;
 
@@ -422,7 +462,7 @@ async function viewLeads() {
     const b = e.target.closest('.fbtn'); if (!b) return;
     state.filter = b.dataset.f; state.leadsPage = 1;
     $('#filters').querySelectorAll('.fbtn').forEach((x) => x.classList.toggle('active', x === b));
-    if (state.filter === 'spam') { try { await loadSpamLeads(); } catch (err) { if (err.message === 'unauth') return; toast('No se pudieron cargar los leads retenidos', 'err'); } }
+    if (state.filter === 'spam') { try { await loadSpamLeads(); } catch (err) { if (err.message === 'unauth') return; toast(t('leads.errSpam'), 'err'); } }
     paintFilterSelects();
     paintLeads();
   });
@@ -438,10 +478,10 @@ const spamMode = () => state.filter === 'spam';
 
 function paintFilterSelects() {
   const fs = $('#fl-service'), fc = $('#fl-city'); if (!fs || !fc) return;
-  fs.innerHTML = ['<option value="">Todos los servicios</option>', ...Object.entries(services()).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`), '<option value="contact">Solo contacto (sin servicio)</option>'].join('');
+  fs.innerHTML = [`<option value="">${t('leads.allServices')}</option>`, ...Object.entries(services()).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`), `<option value="contact">${t('leads.contactOnly')}</option>`].join('');
   fs.value = state.fService;
   const cities = [...new Set((spamMode() ? state.spamLeads : state.leads).map((l) => String(l.city || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  fc.innerHTML = ['<option value="">Todas las ciudades</option>', ...cities.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`)].join('');
+  fc.innerHTML = [`<option value="">${t('leads.allCities')}</option>`, ...cities.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`)].join('');
   fc.value = cities.includes(state.fCity) ? state.fCity : '';
   if (fc.value !== state.fCity) state.fCity = '';
 }
@@ -462,12 +502,12 @@ function paintLeads() {
   const wrap = $('#leads-table'); if (!wrap) return;
   const spam = spamMode();
   const rows = filteredLeads();
-  const spamNote = spam ? `<div class="spam-note">${ICON.shield}<p><b>Retenidos por reCAPTCHA.</b> No avisaron por correo y no cuentan en el pipeline ni en las estadísticas. Si uno es un cliente real, ábrelo y pulsa <b>No es spam</b>: vuelve al pipeline y sale el aviso por correo de nuevo lead.</p></div>` : '';
+  const spamNote = spam ? `<div class="spam-note">${ICON.shield}<p>${t('leads.spamNote')}</p></div>` : '';
   const sn = $('#spam-n'); if (sn) sn.textContent = `(${Number(state.spamCount) || 0})`;
   if (!rows.length) {
     wrap.innerHTML = spam
-      ? `${spamNote}<div class="empty"><div class="big">Nada retenido</div>reCAPTCHA no ha bloqueado ninguna solicitud${state.q || state.fService || state.fCity ? ' con este filtro' : ''}.</div>`
-      : `<div class="empty"><div class="big">Sin leads</div>No hay registros con este filtro.</div>`;
+      ? `${spamNote}<div class="empty"><div class="big">${t('leads.spamEmptyBig')}</div>${state.q || state.fService || state.fCity ? t('leads.spamEmptyFiltered') : t('leads.spamEmpty')}</div>`
+      : `<div class="empty"><div class="big">${t('leads.emptyBig')}</div>${t('leads.empty')}</div>`;
     return;
   }
 
@@ -478,17 +518,17 @@ function paintLeads() {
   const pageRows = rows.slice(start, start + LEADS_PER_PAGE);
   // En el filtro Spam, la columna Estado muestra el motivo y la puntuación de reCAPTCHA
   const stateCell = (l) => spam
-    ? `<span class="status-pill st-spam"><i class="dot"></i>Spam</span>
+    ? `<span class="status-pill st-spam"><i class="dot"></i>${t('leads.spam')}</span>
        <span class="sub spam-why" title="${esc(spamReasonLabel(l.spam_reason))}">${esc(spamReasonLabel(l.spam_reason, true))}${fmtScore(l.recaptcha_score) ? ` · <b class="mono">${fmtScore(l.recaptcha_score)}</b>` : ''}</span>`
     : `${statusPill(l.status)}
         ${l.status === 'nuevo' ? `<span class="sub" style="margin-top:4px">${slaHTML(l)}</span>` : ''}
         ${l.status === 'perdido' && l.loss_reason ? `<span class="sub">${esc(lossLabel(l.loss_reason))}</span>` : ''}`;
 
   wrap.innerHTML = `${spamNote}<table><thead><tr>
-    <th>Nombre</th><th>Contacto</th><th>Servicio</th><th>Ciudad / suburb</th><th>${spam ? 'Motivo · puntuación' : 'Estado'}</th><th>Fotos</th><th>${spam ? 'Recibido' : 'Creado'}</th><th>Responsable</th>
+    <th>${t('leads.th.name')}</th><th>${t('leads.th.contact')}</th><th>${t('leads.th.service')}</th><th>${t('leads.th.city')}</th><th>${spam ? t('leads.th.reason') : t('leads.th.status')}</th><th>${t('leads.th.photos')}</th><th>${spam ? t('leads.th.received') : t('leads.th.created')}</th><th>${t('leads.th.owner')}</th>
     </tr></thead><tbody>
     ${pageRows.map((l) => `<tr data-id="${l.id}"${spam ? ' class="row-spam"' : ''}>
-      <td><span class="lead-nm">${esc(leadName(l))}</span><span class="sub">${esc(SOURCE_LABELS[l.source] || l.source || '')}</span></td>
+      <td><span class="lead-nm">${esc(leadName(l))}</span><span class="sub">${esc(srcLabel(l.source))}</span></td>
       <td>${esc(l.mobile || '—')}<span class="sub">${esc(l.email || '')}</span></td>
       <td>${chipService(l)}</td>
       <td>${esc(l.city || '—')}<span class="sub">${esc([l.suburb, l.postcode].filter(Boolean).join(' '))}</span></td>
@@ -525,7 +565,7 @@ function pageWindow(cur, pages) {
 
 function leadsPager(page, pages, total, start, count) {
   const from = total ? start + 1 : 0, to = start + count;
-  const caption = `<span class="pager-count">Mostrando <b>${from}–${to}</b> de <b>${total}</b></span>`;
+  const caption = `<span class="pager-count">${t('pager.showing', { from, to, total })}</span>`;
   if (pages <= 1) return `<div class="pager">${caption}</div>`;
   const nums = pageWindow(page, pages).map((n) => n === '…'
     ? `<span class="pager-gap">…</span>`
@@ -552,23 +592,23 @@ function backToLeads() {
   else location.hash = 'leads';
 }
 
-// Plantillas en inglés para el cliente final (WhatsApp / SMS / correo)
+// Plantillas en inglés para el cliente final (WhatsApp / SMS / correo) — el texto va SIEMPRE en inglés; solo la etiqueta se traduce
 function msgTemplates(l) {
   const svc = (svcLabel(l.service) || 'assembly').toLowerCase();
   const where = l.suburb ? ` in ${l.suburb}` : '';
   const n = firstName(l);
   const phone = '+' + ((state.settings && state.settings.whatsapp_number) || DEFAULT_WA);
   return [
-    { key: 'intro', label: 'Primer contacto', text: `Hi ${n}, this is Wyelee about your ${svc} quote${where}. Thanks for getting in touch! When is a good time to call you so we can confirm the details and send your quote?` },
-    { key: 'quote', label: 'Enviar cotización', text: `Hi ${n}, this is Wyelee. Here is your quote for the ${svc}${where}: $____. It includes assembly, clean-up and a final stability check. Reply YES to book a time, or let us know if you have any questions.` },
-    { key: 'followup', label: 'Seguimiento', text: `Hi ${n}, just following up on the ${svc} quote we sent. Would you like to lock in a date? We usually have availability this week. Thanks, Wyelee` },
-    { key: 'confirm', label: 'Confirmar visita', text: `Hi ${n}, this is Wyelee confirming your ${svc} appointment. We'll message you when we're on the way. If anything changes, you can reach us on ${phone}. See you soon!` },
+    { key: 'intro', label: t('tpl.intro'), text: `Hi ${n}, this is Wyelee about your ${svc} quote${where}. Thanks for getting in touch! When is a good time to call you so we can confirm the details and send your quote?` },
+    { key: 'quote', label: t('tpl.quote'), text: `Hi ${n}, this is Wyelee. Here is your quote for the ${svc}${where}: $____. It includes assembly, clean-up and a final stability check. Reply YES to book a time, or let us know if you have any questions.` },
+    { key: 'followup', label: t('tpl.followup'), text: `Hi ${n}, just following up on the ${svc} quote we sent. Would you like to lock in a date? We usually have availability this week. Thanks, Wyelee` },
+    { key: 'confirm', label: t('tpl.confirm'), text: `Hi ${n}, this is Wyelee confirming your ${svc} appointment. We'll message you when we're on the way. If anything changes, you can reach us on ${phone}. See you soon!` },
   ];
 }
 
 async function loadLeadTasks(leadId) {
   // lead_id explícito: así también salen las tareas de un lead retenido como spam (la lista general las excluye)
-  try { const all = await api('GET', `/api/tasks?scope=all&state=all&lead_id=${Number(leadId)}`); return (all || []).filter((t) => Number(t.lead_id) === Number(leadId)); }
+  try { const all = await api('GET', `/api/tasks?scope=all&state=all&lead_id=${Number(leadId)}`); return (all || []).filter((x) => Number(x.lead_id) === Number(leadId)); }
   catch (e) { return []; }
 }
 function presetDue(k) {
@@ -581,18 +621,18 @@ function presetDue(k) {
   return d;
 }
 async function createTask(leadId, body) {
-  try { await api('POST', `/api/leads/${leadId}/tasks`, body); toast('Recordatorio creado'); return true; }
-  catch (e) { if (e.message !== 'unauth') toast('No se pudo crear la tarea', 'err'); return false; }
+  try { await api('POST', `/api/leads/${leadId}/tasks`, body); toast(t('task.created')); return true; }
+  catch (e) { if (e.message !== 'unauth') toast(t('task.errCreate'), 'err'); return false; }
 }
 
 async function viewLeadDetail(id) {
   const v = $('#view');
-  v.innerHTML = `<div class="empty">Cargando…</div>`;
+  v.innerHTML = `<div class="empty">${t('common.loading')}</div>`;
   let lead;
   try { lead = await api('GET', `/api/leads/${id}`); }
   catch (e) {
     if (e.message === 'unauth') return;
-    v.innerHTML = `<div class="empty"><div class="big">Lead no encontrado</div><button class="btn btn-ghost btn-sm" id="back" style="margin-top:14px">← Volver a Leads</button></div>`;
+    v.innerHTML = `<div class="empty"><div class="big">${t('detail.notFound')}</div><button class="btn btn-ghost btn-sm" id="back" style="margin-top:14px">${t('detail.back')}</button></div>`;
     $('#back').addEventListener('click', backToLeads); return;
   }
   let tasks = Array.isArray(lead.tasks) ? lead.tasks : await loadLeadTasks(id);
@@ -606,30 +646,30 @@ async function viewLeadDetail(id) {
   v.innerHTML = `
     <div class="topbar">
       <div>
-        <button class="backlink" id="back">← Volver a Leads</button>
+        <button class="backlink" id="back">${t('detail.back')}</button>
         <h1 style="margin-top:6px">${esc(leadName(lead))}</h1>
         <div class="detail-sub">
-          ${isSpam ? '<span class="status-pill st-spam"><i class="dot"></i>Spam</span>' : ''}
+          ${isSpam ? `<span class="status-pill st-spam"><i class="dot"></i>${t('leads.spam')}</span>` : ''}
           ${statusPill(lead.status)}
           ${isSpam ? '' : slaHTML(lead)}
           ${chipService(lead)}
-          <span class="sep">·</span><span>${esc(SOURCE_LABELS[lead.source] || lead.source || '')}</span>
-          <span class="sep">·</span><span>Recibido ${fmtDateTime(lead.created_at)}</span>
+          <span class="sep">·</span><span>${esc(srcLabel(lead.source))}</span>
+          <span class="sep">·</span><span>${t('detail.received', { d: fmtDateTime(lead.created_at) })}</span>
           <span class="sep">·</span><span class="mono">#${Number(lead.id)}</span>
         </div>
       </div>
-      <div class="tools">${isSpam ? '' : `<button class="btn btn-ghost btn-sm" id="mark-spam" title="Lo retira del pipeline y de las estadísticas, sin borrarlo">Marcar como spam</button>${isAdmin() ? '<button class="btn btn-ghost btn-sm danger" id="del">Eliminar</button>' : ''}`}</div>
+      <div class="tools">${isSpam ? '' : `<button class="btn btn-ghost btn-sm" id="mark-spam" title="${esc(t('detail.markSpamTitle'))}">${t('detail.markSpam')}</button>${isAdmin() ? `<button class="btn btn-ghost btn-sm danger" id="del">${t('common.delete')}</button>` : ''}`}</div>
     </div>
 
     ${isSpam ? `<div class="spam-banner" role="alert">
       <span class="sb-ico">${ICON.shield}</span>
       <div class="sb-txt">
-        <b>${manualSpam ? 'Marcado como spam desde el panel' : `Retenido como spam por reCAPTCHA — ${esc(spamReasonLabel(lead.spam_reason, true).toLowerCase())}`}${score ? ` <span class="sb-score">puntuación <span class="mono">${score}</span></span>` : ''}</b>
-        <span>${manualSpam ? '' : `Motivo: ${esc(spamReasonLabel(lead.spam_reason))}. `}No se avisó por correo y no aparece en el pipeline, en las estadísticas ni en los contadores. Si es un cliente real, pulsa <b>No es spam</b>: vuelve al pipeline y sale el aviso de nuevo lead.</span>
+        <b>${manualSpam ? t('detail.spamManual') : t('detail.spamHeld', { r: esc(spamReasonLabel(lead.spam_reason, true).toLowerCase()) })}${score ? ` <span class="sb-score">${t('detail.score')} <span class="mono">${score}</span></span>` : ''}</b>
+        <span>${manualSpam ? '' : t('detail.spamWhy', { r: esc(spamReasonLabel(lead.spam_reason)) })}${t('detail.spamBody')}</span>
       </div>
       <div class="sb-act">
-        <button class="btn btn-primary btn-sm" id="spam-restore">No es spam</button>
-        ${isAdmin() ? '<button class="btn btn-ghost btn-sm danger" id="spam-del">Eliminar</button>' : ''}
+        <button class="btn btn-primary btn-sm" id="spam-restore">${t('detail.notSpam')}</button>
+        ${isAdmin() ? `<button class="btn btn-ghost btn-sm danger" id="spam-del">${t('common.delete')}</button>` : ''}
       </div>
     </div>` : ''}
 
@@ -638,52 +678,52 @@ async function viewLeadDetail(id) {
         ${quoteCardHTML(lead, isContact)}
 
         <div class="card-box">
-          <div class="section-t">Fotos del cliente ${files.length ? `<span class="cnt">${files.length}</span>` : ''}</div>
+          <div class="section-t">${t('detail.photosT')} ${files.length ? `<span class="cnt">${files.length}</span>` : ''}</div>
           ${galleryHTML(lead)}
         </div>
 
         ${editCardHTML(lead)}
 
         <div class="card-box">
-          <div class="section-t">Actividad</div>
+          <div class="section-t">${t('detail.activity')}</div>
           <div class="timeline" id="timeline">${timelineHTML(lead)}</div>
           <div class="note-add">
-            <input id="note" placeholder="Añadir nota…">
-            <button class="btn btn-ghost btn-sm" id="note-btn">Añadir</button>
+            <input id="note" placeholder="${esc(t('detail.notePh'))}">
+            <button class="btn btn-ghost btn-sm" id="note-btn">${t('detail.noteAdd')}</button>
           </div>
         </div>
       </div>
 
       <aside class="detail-side">
         <div class="card-box">
-          <div class="section-t">Estado en el pipeline</div>
+          <div class="section-t">${t('detail.statusT')}</div>
           <div class="status-select" id="status-sel">
-            ${STATUSES.map((s) => `<button class="ss ${s} ${lead.status === s ? 'active' : ''}" data-s="${s}">${STATUS_LABELS[s]}</button>`).join('')}
+            ${STATUSES.map((s) => `<button class="ss ${s} ${lead.status === s ? 'active' : ''}" data-s="${s}">${statusLabel(s)}</button>`).join('')}
           </div>
-          ${lead.status === 'perdido' && lead.loss_reason ? `<p class="loss-note">Motivo de pérdida: <b>${esc(lossLabel(lead.loss_reason))}</b></p>` : ''}
-          ${lead.quoted_at ? `<p class="help" style="margin-top:10px">Cotizado el ${fmtDateTime(lead.quoted_at)}.</p>` : ''}
+          ${lead.status === 'perdido' && lead.loss_reason ? `<p class="loss-note">${t('detail.lossNote', { r: esc(lossLabel(lead.loss_reason)) })}</p>` : ''}
+          ${lead.quoted_at ? `<p class="help" style="margin-top:10px">${t('detail.quotedOn', { d: fmtDateTime(lead.quoted_at) })}</p>` : ''}
         </div>
 
         <div class="card-box">
-          <div class="section-t">Acciones rápidas</div>
-          <div class="field"><label>Plantilla (en inglés, editable)</label>
-            <select id="qa-tpl">${tpls.map((t, i) => `<option value="${i}">${esc(t.label)}</option>`).join('')}</select>
+          <div class="section-t">${t('detail.qaT')}</div>
+          <div class="field"><label>${t('detail.qaTpl')}</label>
+            <select id="qa-tpl">${tpls.map((tp, i) => `<option value="${i}">${esc(tp.label)}</option>`).join('')}</select>
           </div>
           <textarea id="qa-text" class="qa-text" rows="4">${esc(tpls[0].text)}</textarea>
           <div class="qa-grid">
             <a class="btn btn-primary btn-sm" id="qa-wa" target="_blank" rel="noopener noreferrer">WhatsApp</a>
             <a class="btn btn-ghost btn-sm" id="qa-sms">SMS</a>
-            <a class="btn btn-ghost btn-sm" id="qa-call">Llamar</a>
-            <a class="btn btn-ghost btn-sm" id="qa-mail">Correo</a>
+            <a class="btn btn-ghost btn-sm" id="qa-call">${t('detail.qaCall')}</a>
+            <a class="btn btn-ghost btn-sm" id="qa-mail">${t('detail.qaMail')}</a>
           </div>
-          <button class="btn btn-ghost btn-sm" id="qa-copy" style="width:100%">Copiar mensaje</button>
-          ${!lead.mobile ? '<p class="help" style="margin-top:8px">Este lead no dejó móvil: WhatsApp, SMS y llamada no están disponibles.</p>' : ''}
+          <button class="btn btn-ghost btn-sm" id="qa-copy" style="width:100%">${t('detail.qaCopy')}</button>
+          ${!lead.mobile ? `<p class="help" style="margin-top:8px">${t('detail.noMobile')}</p>` : ''}
         </div>
 
         <div class="card-box" id="tasks-card">${leadTasksCardHTML(lead, tasks)}</div>
 
         <div class="card-box">
-          <div class="section-t">Origen y atribución</div>
+          <div class="section-t">${t('detail.attrT')}</div>
           ${attrHTML(lead)}
         </div>
       </aside>
@@ -691,9 +731,9 @@ async function viewLeadDetail(id) {
 
   $('#back').addEventListener('click', backToLeads);
   const delLead = async () => {
-    if (!confirm('¿Eliminar este lead permanentemente? Se borran también sus fotos y su historial.')) return;
-    try { await api('DELETE', `/api/leads/${id}`); await loadLeads(); if (isSpam) await loadSpamLeads().catch(() => {}); toast('Lead eliminado'); backToLeads(); }
-    catch (e) { if (e.message !== 'unauth') toast('No se pudo eliminar', 'err'); }
+    if (!confirm(t('detail.confirmDelete'))) return;
+    try { await api('DELETE', `/api/leads/${id}`); await loadLeads(); if (isSpam) await loadSpamLeads().catch(() => {}); toast(t('detail.deleted')); backToLeads(); }
+    catch (e) { if (e.message !== 'unauth') toast(t('common.errDelete'), 'err'); }
   };
   [$('#del'), $('#spam-del')].forEach((b) => b && b.addEventListener('click', delLead));
   // Spam: recuperar (vuelve al pipeline + aviso por correo) o retirar a mano (sin correo)
@@ -703,20 +743,20 @@ async function viewLeadDetail(id) {
       const r = await api('PATCH', `/api/leads/${id}/spam`, { spam });
       await loadLeads();
       if (state.filter === 'spam' || spam) await loadSpamLeads().catch(() => {});
-      if (spam) toast('Marcado como spam: fuera del pipeline');
+      if (spam) toast(t('detail.markedSpam'));
       else {
         const n = r && r.notification;
-        toast(n === 'sent' ? 'Lead recuperado: vuelve al pipeline y se envió el aviso por correo'
-          : n === 'failed' ? 'Lead recuperado, pero el aviso por correo falló' : 'Lead recuperado: vuelve al pipeline', n === 'failed' ? 'err' : 'ok');
+        toast(n === 'sent' ? t('detail.recoveredSent')
+          : n === 'failed' ? t('detail.recoveredFailed') : t('detail.recovered'), n === 'failed' ? 'err' : 'ok');
       }
       viewLeadDetail(id);
-    } catch (e) { if (btn) btn.disabled = false; if (e.message !== 'unauth') toast('No se pudo actualizar', 'err'); }
+    } catch (e) { if (btn) btn.disabled = false; if (e.message !== 'unauth') toast(t('common.errUpdate'), 'err'); }
   };
   const restoreBtn = $('#spam-restore');
   if (restoreBtn) restoreBtn.addEventListener('click', () => setSpam(false, restoreBtn));
   const markBtn = $('#mark-spam');
   if (markBtn) markBtn.addEventListener('click', () => {
-    if (!confirm('¿Marcar este lead como spam? Sale del pipeline, de las estadísticas y de los contadores (no se borra: queda en Leads → Spam).')) return;
+    if (!confirm(t('detail.confirmSpam'))) return;
     setSpam(true, markBtn);
   });
   $('#status-sel').addEventListener('click', (e) => {
@@ -739,7 +779,7 @@ async function viewLeadDetail(id) {
   $('#qa-tpl').addEventListener('change', (e) => { $('#qa-text').value = tpls[Number(e.target.value)].text; syncQA(); });
   $('#qa-text').addEventListener('input', syncQA);
   $('#qa-copy').addEventListener('click', () => {
-    navigator.clipboard.writeText($('#qa-text').value).then(() => toast('Mensaje copiado')).catch(() => toast('No se pudo copiar', 'err'));
+    navigator.clipboard.writeText($('#qa-text').value).then(() => toast(t('detail.copied'))).catch(() => toast(t('common.errCopy'), 'err'));
   });
   syncQA();
 
@@ -758,10 +798,11 @@ async function viewLeadDetail(id) {
       items: $('#f-items').value, notes: $('#f-notes').value,
       owner_id: val('#f-owner') ? Number(val('#f-owner')) : null,
     };
-    if (!body.mobile && !body.email) { toast('Hace falta móvil o correo', 'err'); return; }
-    if (body.postcode && !/^\d{4}$/.test(body.postcode)) { toast('El postcode son 4 dígitos', 'err'); return; }
-    try { await api('PATCH', `/api/leads/${id}`, body); await loadLeads(); toast('Cambios guardados'); viewLeadDetail(id); }
-    catch (e) { if (e.message !== 'unauth') toast('Error al guardar', 'err'); }
+    if (!body.mobile && !body.email) { toast(t('detail.needContact'), 'err'); return; }
+    if (body.postcode && !/^\d{4}$/.test(body.postcode)) { toast(t('detail.postcode4'), 'err'); return; }
+    try { await api('PATCH', `/api/leads/${id}`, body); await loadLeads(); toast(t('detail.saved')); viewLeadDetail(id); }
+    // validación del servidor (400 con code): su mensaje ya viene en el idioma del panel; lo demás → aviso genérico
+    catch (e) { if (e.message !== 'unauth') toast(e.code && e.code !== 'server_error' ? e.message : t('common.errSave'), 'err'); }
   });
 
   // ----- notas -----
@@ -770,8 +811,8 @@ async function viewLeadDetail(id) {
   };
   const addNote = async () => {
     const note = $('#note').value.trim(); if (!note) return;
-    try { await api('POST', `/api/leads/${id}/note`, { note }); $('#note').value = ''; toast('Nota añadida'); refreshTimeline(); }
-    catch (e) { if (e.message !== 'unauth') toast('Error', 'err'); }
+    try { await api('POST', `/api/leads/${id}/note`, { note }); $('#note').value = ''; toast(t('detail.noteAdded')); refreshTimeline(); }
+    catch (e) { if (e.message !== 'unauth') toast(t('common.error'), 'err'); }
   };
   $('#note-btn').addEventListener('click', addNote);
   $('#note').addEventListener('keydown', (e) => { if (e.key === 'Enter') addNote(); });
@@ -782,30 +823,30 @@ async function viewLeadDetail(id) {
   tasksCard.addEventListener('click', async (e) => {
     const p = e.target.closest('[data-preset]');
     if (p) {
-      const ok = await createTask(id, { title: `Llamar a ${firstName(lead)}`, due_at: presetDue(p.dataset.preset).toISOString(), user_id: state.me.id });
+      const ok = await createTask(id, { title: t('task.presetTitle', { name: firstName(lead) }), due_at: presetDue(p.dataset.preset).toISOString(), user_id: state.me.id });
       if (ok) await refreshTasks();
       return;
     }
     if (e.target.closest('#t-add')) {
       const title = $('#t-title').value.trim(), dueV = $('#t-due').value, uid = $('#t-user').value;
-      if (!title) { toast('Escribe el título de la tarea', 'err'); return; }
-      if (!dueV || isNaN(new Date(dueV))) { toast('Elige fecha y hora', 'err'); return; }
+      if (!title) { toast(t('task.needTitle'), 'err'); return; }
+      if (!dueV || isNaN(new Date(dueV))) { toast(t('task.needDue'), 'err'); return; }
       const ok = await createTask(id, { title, due_at: new Date(dueV).toISOString(), user_id: uid ? Number(uid) : null });
       if (ok) await refreshTasks();
       return;
     }
     const d = e.target.closest('[data-del]');
     if (d) {
-      if (!confirm('¿Eliminar esta tarea?')) return;
-      try { await api('DELETE', `/api/tasks/${Number(d.dataset.del)}`); removeAlert(d.dataset.del); toast('Tarea eliminada'); }
-      catch (err) { if (err.message !== 'unauth') toast('No se pudo eliminar', 'err'); }
+      if (!confirm(t('task.confirmDelete'))) return;
+      try { await api('DELETE', `/api/tasks/${Number(d.dataset.del)}`); removeAlert(d.dataset.del); toast(t('task.deleted')); }
+      catch (err) { if (err.message !== 'unauth') toast(t('common.errDelete'), 'err'); }
       await refreshTasks();
     }
   });
   tasksCard.addEventListener('change', async (e) => {
     const cb = e.target.closest('input[data-task]'); if (!cb) return;
-    try { await api('PATCH', `/api/tasks/${Number(cb.dataset.task)}`, { done: cb.checked }); if (cb.checked) removeAlert(cb.dataset.task); toast(cb.checked ? 'Tarea hecha' : 'Tarea reabierta'); }
-    catch (err) { if (err.message !== 'unauth') toast('No se pudo actualizar', 'err'); }
+    try { await api('PATCH', `/api/tasks/${Number(cb.dataset.task)}`, { done: cb.checked }); if (cb.checked) removeAlert(cb.dataset.task); toast(cb.checked ? t('task.done') : t('task.reopened')); }
+    catch (err) { if (err.message !== 'unauth') toast(t('common.errUpdate'), 'err'); }
     await refreshTasks();
   });
 }
@@ -815,40 +856,40 @@ function quoteCardHTML(lead, isContact) {
   const tel = waNumber(lead.mobile);
   const addons = addonsArr(lead).map((k) => ADDONS[k] || k);
   const contactRows = `
-    <div class="kv-row"><span class="k">Móvil</span>${lead.mobile ? `<a class="v" href="tel:+${esc(tel)}">${esc(lead.mobile)}</a>` : '<span class="v">—</span>'}</div>
-    <div class="kv-row"><span class="k">Correo</span>${lead.email ? `<a class="v" href="mailto:${esc(lead.email)}">${esc(lead.email)}</a>` : '<span class="v">—</span>'}</div>
-    <div class="kv-row"><span class="k">Ubicación</span><span class="v">${esc(locLabel(lead))}</span></div>
-    <div class="kv-row"><span class="k">Responsable</span><span class="v">${lead.owner_name ? esc(lead.owner_name) : 'Sin asignar'}</span></div>
-    <div class="kv-row"><span class="k">Último cambio</span><span class="v">${fmtDateTime(lead.updated_at)}</span></div>`;
+    <div class="kv-row"><span class="k">${t('quote.mobile')}</span>${lead.mobile ? `<a class="v" href="tel:+${esc(tel)}">${esc(lead.mobile)}</a>` : '<span class="v">—</span>'}</div>
+    <div class="kv-row"><span class="k">${t('quote.email')}</span>${lead.email ? `<a class="v" href="mailto:${esc(lead.email)}">${esc(lead.email)}</a>` : '<span class="v">—</span>'}</div>
+    <div class="kv-row"><span class="k">${t('quote.location')}</span><span class="v">${esc(locLabel(lead))}</span></div>
+    <div class="kv-row"><span class="k">${t('field.owner')}</span><span class="v">${lead.owner_name ? esc(lead.owner_name) : t('common.unassigned')}</span></div>
+    <div class="kv-row"><span class="k">${t('quote.lastChange')}</span><span class="v">${fmtDateTime(lead.updated_at)}</span></div>`;
   if (isContact) {
     return `<div class="card-box">
-      <div class="section-t">Mensaje de contacto</div>
-      ${lead.notes ? `<div class="items-box" style="margin:0 0 14px">${esc(lead.notes)}</div>` : '<p class="muted" style="margin-bottom:14px">Sin mensaje.</p>'}
+      <div class="section-t">${t('quote.contactMsg')}</div>
+      ${lead.notes ? `<div class="items-box" style="margin:0 0 14px">${esc(lead.notes)}</div>` : `<p class="muted" style="margin-bottom:14px">${t('quote.noMsg')}</p>`}
       <div class="kv">${contactRows}</div>
     </div>`;
   }
   return `<div class="card-box">
-    <div class="section-t">Solicitud de cotización</div>
+    <div class="section-t">${t('quote.request')}</div>
     <div class="quote-head">
-      <div class="qh"><div class="k">Servicio</div><div class="v">${esc(svcLabel(lead.service) || lead.service || '—')}</div></div>
-      <div class="qh"><div class="k">Condición</div><div class="v">${esc(CONDITIONS[lead.condition] || lead.condition || '—')}</div></div>
-      <div class="qh"><div class="k">Días</div><div class="v">${esc(DAYS[lead.days] || lead.days || '—')}</div></div>
-      <div class="qh"><div class="k">Franja</div><div class="v">${esc(TIMES[lead.time] || lead.time || '—')}</div></div>
+      <div class="qh"><div class="k">${t('field.service')}</div><div class="v">${esc(svcLabel(lead.service) || lead.service || '—')}</div></div>
+      <div class="qh"><div class="k">${t('field.condition')}</div><div class="v">${esc(CONDITIONS[lead.condition] || lead.condition || '—')}</div></div>
+      <div class="qh"><div class="k">${t('field.days')}</div><div class="v">${esc(DAYS[lead.days] || lead.days || '—')}</div></div>
+      <div class="qh"><div class="k">${t('field.slot')}</div><div class="v">${esc(TIMES[lead.time] || lead.time || '—')}</div></div>
     </div>
     <div class="kv">
-      <div class="kv-row"><span class="k">Extras</span><span class="v">${addons.length ? addons.map((a) => esc(a)).join(' · ') : '—'}</span></div>
+      <div class="kv-row"><span class="k">${t('field.addons')}</span><span class="v">${addons.length ? addons.map((a) => esc(a)).join(' · ') : '—'}</span></div>
       ${contactRows}
     </div>
-    <div class="section-t" style="margin-top:16px">Artículos</div>
-    ${lead.items ? `<div class="items-box" style="margin-top:0">${esc(lead.items)}</div>` : '<p class="muted">El cliente no listó artículos.</p>'}
-    ${lead.notes ? `<div class="section-t" style="margin-top:16px">Notas del cliente</div><div class="items-box" style="margin-top:0">${esc(lead.notes)}</div>` : ''}
+    <div class="section-t" style="margin-top:16px">${t('field.items')}</div>
+    ${lead.items ? `<div class="items-box" style="margin-top:0">${esc(lead.items)}</div>` : `<p class="muted">${t('quote.noItems')}</p>`}
+    ${lead.notes ? `<div class="section-t" style="margin-top:16px">${t('quote.customerNotes')}</div><div class="items-box" style="margin-top:0">${esc(lead.notes)}</div>` : ''}
   </div>`;
 }
 
 function galleryHTML(lead) {
   const files = lead.files || [];
-  if (!files.length) return '<p class="muted">El cliente no adjuntó fotos.</p>';
-  return `<div class="gallery">${files.map((f, i) => `<button type="button" class="ph" data-ph="${i}" title="${esc(f.name || 'Foto')}"><img src="${fileURL(lead.id, f.id)}" alt="${esc(f.name || 'Foto')}" loading="lazy"></button>`).join('')}</div>`;
+  if (!files.length) return `<p class="muted">${t('gallery.none')}</p>`;
+  return `<div class="gallery">${files.map((f, i) => `<button type="button" class="ph" data-ph="${i}" title="${esc(f.name || t('gallery.photo'))}"><img src="${fileURL(lead.id, f.id)}" alt="${esc(f.name || t('gallery.photo'))}" loading="lazy"></button>`).join('')}</div>`;
 }
 
 // Visor de fotos en modal (flechas ← → y Esc)
@@ -859,10 +900,10 @@ function openViewer(lead, idx) {
   const paint = () => {
     const f = files[i], url = fileURL(lead.id, f.id);
     m.firstElementChild.innerHTML = `
-      <button class="vw-x" id="vw-x" title="Cerrar">×</button>
-      ${files.length > 1 ? '<button class="vw-nav prev" id="vw-prev" title="Anterior">‹</button><button class="vw-nav next" id="vw-next" title="Siguiente">›</button>' : ''}
-      <img src="${url}" alt="${esc(f.name || 'Foto')}">
-      <div class="vw-cap"><span>${esc(f.name || 'Foto')} · ${fmtSize(f.size)} · ${i + 1}/${files.length}</span><a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener noreferrer">Abrir en pestaña nueva</a></div>`;
+      <button class="vw-x" id="vw-x" title="${esc(t('viewer.close'))}">×</button>
+      ${files.length > 1 ? `<button class="vw-nav prev" id="vw-prev" title="${esc(t('viewer.prev'))}">‹</button><button class="vw-nav next" id="vw-next" title="${esc(t('viewer.next'))}">›</button>` : ''}
+      <img src="${url}" alt="${esc(f.name || t('gallery.photo'))}">
+      <div class="vw-cap"><span>${esc(f.name || t('gallery.photo'))} · ${fmtSize(f.size)} · ${i + 1}/${files.length}</span><a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener noreferrer">${t('viewer.newTab')}</a></div>`;
     $('#vw-x').addEventListener('click', closeModal);
     const prev = $('#vw-prev'), next = $('#vw-next');
     if (prev) prev.addEventListener('click', () => { i = (i - 1 + files.length) % files.length; paint(); });
@@ -875,71 +916,71 @@ function editCardHTML(lead) {
   const opts = (dict, cur, none) => [`<option value="">${none}</option>`, ...Object.entries(dict).map(([k, v]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${esc(v)}</option>`)].join('');
   const addons = addonsArr(lead);
   return `<div class="card-box">
-    <div class="section-t">Editar datos</div>
+    <div class="section-t">${t('edit.title')}</div>
     <div class="form-row-3">
-      <div class="field"><label>Nombre</label><input id="f-name" value="${esc(lead.name || '')}"></div>
-      <div class="field"><label>Correo</label><input id="f-email" type="email" value="${esc(lead.email || '')}"></div>
-      <div class="field"><label>Móvil</label><input id="f-mobile" value="${esc(lead.mobile || '')}"></div>
+      <div class="field"><label>${t('field.name')}</label><input id="f-name" value="${esc(lead.name || '')}"></div>
+      <div class="field"><label>${t('field.email')}</label><input id="f-email" type="email" value="${esc(lead.email || '')}"></div>
+      <div class="field"><label>${t('field.mobile')}</label><input id="f-mobile" value="${esc(lead.mobile || '')}"></div>
     </div>
     <div class="form-row-3">
       <div class="field"><label>Suburb</label><input id="f-suburb" value="${esc(lead.suburb || '')}"></div>
       <div class="field"><label>Postcode</label><input id="f-postcode" inputmode="numeric" maxlength="4" value="${esc(lead.postcode || '')}"></div>
-      <div class="field"><label>Ciudad</label><input id="f-city" value="${esc(lead.city || '')}"></div>
+      <div class="field"><label>${t('field.city')}</label><input id="f-city" value="${esc(lead.city || '')}"></div>
     </div>
     <div class="form-row-3">
-      <div class="field"><label>Servicio</label><select id="f-service">${opts(services(), lead.service, '— (solo contacto)')}</select></div>
-      <div class="field"><label>Condición</label><select id="f-condition">${opts(CONDITIONS, lead.condition, '—')}</select></div>
-      <div class="field"><label>Responsable</label><select id="f-owner">${ownerOptions(lead.owner_id)}</select></div>
+      <div class="field"><label>${t('field.service')}</label><select id="f-service">${opts(services(), lead.service, t('field.contactOnly'))}</select></div>
+      <div class="field"><label>${t('field.condition')}</label><select id="f-condition">${opts(CONDITIONS, lead.condition, '—')}</select></div>
+      <div class="field"><label>${t('field.owner')}</label><select id="f-owner">${ownerOptions(lead.owner_id)}</select></div>
     </div>
     <div class="form-row">
-      <div class="field"><label>Días</label><select id="f-days">${opts(DAYS, lead.days, '—')}</select></div>
-      <div class="field"><label>Franja horaria</label><select id="f-time">${opts(TIMES, lead.time, '—')}</select></div>
+      <div class="field"><label>${t('field.days')}</label><select id="f-days">${opts(DAYS, lead.days, '—')}</select></div>
+      <div class="field"><label>${t('field.timeSlot')}</label><select id="f-time">${opts(TIMES, lead.time, '—')}</select></div>
     </div>
-    <div class="field"><label>Extras</label><div class="checks">${Object.entries(ADDONS).map(([k, v]) => `<label><input type="checkbox" name="f-addon" value="${k}" ${addons.includes(k) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div></div>
-    <div class="field"><label>Artículos (uno por línea)</label><textarea id="f-items">${esc(lead.items || '')}</textarea></div>
-    <div class="field"><label>Notas del cliente / mensaje</label><textarea id="f-notes">${esc(lead.notes || '')}</textarea></div>
-    <button class="btn btn-primary btn-sm" id="save">Guardar cambios</button>
+    <div class="field"><label>${t('field.addons')}</label><div class="checks">${Object.entries(ADDONS).map(([k, v]) => `<label><input type="checkbox" name="f-addon" value="${k}" ${addons.includes(k) ? 'checked' : ''}> ${esc(v)}</label>`).join('')}</div></div>
+    <div class="field"><label>${t('field.itemsPerLine')}</label><textarea id="f-items">${esc(lead.items || '')}</textarea></div>
+    <div class="field"><label>${t('edit.notesMsg')}</label><textarea id="f-notes">${esc(lead.notes || '')}</textarea></div>
+    <button class="btn btn-primary btn-sm" id="save">${t('common.saveChanges')}</button>
   </div>`;
 }
 
 function leadTasksCardHTML(lead, tasks) {
   const byDue = (a, b) => new Date(a.due_at) - new Date(b.due_at);
-  const open = tasks.filter((t) => !t.done).sort(byDue);
-  const done = tasks.filter((t) => t.done).sort((a, b) => new Date(b.done_at || b.due_at) - new Date(a.done_at || a.due_at)).slice(0, 5);
-  const userOpts = ['<option value="">Cualquiera</option>', ...usersForSelect().map((u) => `<option value="${u.id}" ${u.id === state.me.id ? 'selected' : ''}>${esc(u.name)}</option>`)].join('');
-  const item = (t) => {
-    const overdue = !t.done && new Date(t.due_at) < new Date();
-    return `<label class="task-item ${overdue ? 'overdue' : ''} ${t.done ? 'done' : ''}">
-      <input type="checkbox" data-task="${Number(t.id)}" ${t.done ? 'checked' : ''}>
-      <span class="tk-body"><span class="tk-title">${esc(t.title)}</span><span class="tk-due">${t.done ? `Hecha ${fmtDateTime(t.done_at || t.due_at)}` : `${overdue ? 'Venció ' : 'Vence '}${fmtDue(t.due_at)}`}${t.user_name ? ` · ${esc(t.user_name)}` : ''}</span></span>
-      <button type="button" class="tk-del" data-del="${Number(t.id)}" title="Eliminar">×</button>
+  const open = tasks.filter((x) => !x.done).sort(byDue);
+  const done = tasks.filter((x) => x.done).sort((a, b) => new Date(b.done_at || b.due_at) - new Date(a.done_at || a.due_at)).slice(0, 5);
+  const userOpts = [`<option value="">${t('common.anyone')}</option>`, ...usersForSelect().map((u) => `<option value="${u.id}" ${u.id === state.me.id ? 'selected' : ''}>${esc(u.name)}</option>`)].join('');
+  const item = (task) => {
+    const overdue = !task.done && new Date(task.due_at) < new Date();
+    return `<label class="task-item ${overdue ? 'overdue' : ''} ${task.done ? 'done' : ''}">
+      <input type="checkbox" data-task="${Number(task.id)}" ${task.done ? 'checked' : ''}>
+      <span class="tk-body"><span class="tk-title">${esc(task.title)}</span><span class="tk-due">${task.done ? t('ltasks.doneAt', { d: fmtDateTime(task.done_at || task.due_at) }) : t(overdue ? 'ltasks.wasDue' : 'ltasks.due', { d: fmtDue(task.due_at) })}${task.user_name ? ` · ${esc(task.user_name)}` : ''}</span></span>
+      <button type="button" class="tk-del" data-del="${Number(task.id)}" title="${esc(t('common.delete'))}">×</button>
     </label>`;
   };
   return `
-    <div class="section-t">Tareas ${open.length ? `<span class="cnt">${open.length} abierta${open.length === 1 ? '' : 's'}</span>` : ''}</div>
+    <div class="section-t">${t('ltasks.title')} ${open.length ? `<span class="cnt">${t('ltasks.open', { n: open.length })}</span>` : ''}</div>
     <div class="task-presets">
-      <button type="button" class="preset" data-preset="1h">Llamar en 1 h</button>
-      <button type="button" class="preset" data-preset="3h">Llamar en 3 h</button>
-      <button type="button" class="preset" data-preset="tomorrow">Mañana 9:00</button>
-      <button type="button" class="preset" data-preset="3d">En 3 días</button>
+      <button type="button" class="preset" data-preset="1h">${t('ltasks.p1h')}</button>
+      <button type="button" class="preset" data-preset="3h">${t('ltasks.p3h')}</button>
+      <button type="button" class="preset" data-preset="tomorrow">${t('ltasks.pTomorrow')}</button>
+      <button type="button" class="preset" data-preset="3d">${t('ltasks.p3d')}</button>
     </div>
-    <div class="field"><label>Nueva tarea</label><input id="t-title" placeholder="Enviar cotización por WhatsApp"></div>
+    <div class="field"><label>${t('ltasks.new')}</label><input id="t-title" placeholder="${esc(t('ltasks.newPh'))}"></div>
     <div class="form-row">
-      <div class="field"><label>Vence</label><input id="t-due" type="datetime-local" value="${toLocalInput(presetDue('1h'))}"></div>
-      <div class="field"><label>Responsable</label><select id="t-user">${userOpts}</select></div>
+      <div class="field"><label>${t('ltasks.dueLabel')}</label><input id="t-due" type="datetime-local" value="${toLocalInput(presetDue('1h'))}"></div>
+      <div class="field"><label>${t('field.owner')}</label><select id="t-user">${userOpts}</select></div>
     </div>
-    <button class="btn btn-primary btn-sm" id="t-add" style="width:100%">Crear recordatorio</button>
-    <p class="help" style="margin-top:8px">Avisa en el panel y por correo a la hora indicada.</p>
+    <button class="btn btn-primary btn-sm" id="t-add" style="width:100%">${t('ltasks.create')}</button>
+    <p class="help" style="margin-top:8px">${t('ltasks.help')}</p>
     <div class="task-list">
       ${open.map(item).join('')}${done.map(item).join('')}
-      ${!tasks.length ? '<p class="muted">Sin tareas para este lead.</p>' : ''}
+      ${!tasks.length ? `<p class="muted">${t('ltasks.none')}</p>` : ''}
     </div>`;
 }
 
 // Atribución / origen del lead (página, referencia, UTMs, gclid…)
 function attrHTML(lead) {
   let a; try { a = typeof lead.attribution === 'string' ? JSON.parse(lead.attribution || 'null') : lead.attribution; } catch (e) { a = null; }
-  if (!a || typeof a !== 'object' || !Object.keys(a).length) return '<p class="muted">Sin datos de origen (lead manual o registrado sin captura).</p>';
+  if (!a || typeof a !== 'object' || !Object.keys(a).length) return `<p class="muted">${t('attr.none')}</p>`;
   // Solo http(s):// se emite como enlace; cualquier otro esquema se muestra como texto (anti-XSS)
   const linkv = (u) => {
     const raw = String(u);
@@ -950,14 +991,14 @@ function attrHTML(lead) {
   const row = (label, val, isLink) => (val ? `<div class="kv-row"><span class="k">${label}</span>${isLink ? linkv(val) : `<span class="v">${esc(val)}</span>`}</div>` : '');
   const known = ['page', 'referrer', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'msclkid', 'ttclid', 'user_agent'];
   const rows = [
-    row('Página', a.page), row('Referencia', a.referrer, true),
+    row(t('attr.page'), a.page), row(t('attr.referrer'), a.referrer, true),
     row('utm_source', a.utm_source), row('utm_medium', a.utm_medium), row('utm_campaign', a.utm_campaign),
     row('utm_term', a.utm_term), row('utm_content', a.utm_content),
     row('Google Click ID', a.gclid), row('Meta Click ID', a.fbclid), row('Microsoft Click ID', a.msclkid), row('TikTok Click ID', a.ttclid),
     ...Object.entries(a).filter(([k, v]) => !known.includes(k) && v && typeof v !== 'object').map(([k, v]) => row(esc(k), String(v))),
     row('reCAPTCHA', recaptchaLabel(a.recaptcha)),
   ].join('');
-  return `<div class="kv">${rows || '<p class="muted">Sin datos de origen.</p>'}</div>
+  return `<div class="kv">${rows || `<p class="muted">${t('attr.noneShort')}</p>`}</div>
     ${a.user_agent ? `<p class="help" style="margin-top:10px;word-break:break-word">${esc(a.user_agent)}</p>` : ''}`;
 }
 
@@ -965,25 +1006,27 @@ function attrHTML(lead) {
 function recaptchaLabel(rc) {
   if (!rc || typeof rc !== 'object' || !rc.verdict) return '';
   const sc = fmtScore(rc.score);
-  const tail = (sc ? ` · puntuación ${sc}` : '') + (rc.action ? ` · acción ${rc.action}` : '');
-  if (rc.verdict === 'ok') return `Humano${tail}`;
-  if (rc.verdict === 'spam') return `Retenido como spam${tail}`;
-  if (rc.verdict === 'unverified') return 'Sin verificar: Google no respondió y el lead se aceptó';
-  if (rc.verdict === 'off') return 'Desactivado (sin secreto o sin clave de sitio)';
+  const tail = (sc ? t('rc.score', { s: sc }) : '') + (rc.action ? t('rc.action', { a: rc.action }) : '');
+  if (rc.verdict === 'ok') return t('rc.ok', { tail });
+  if (rc.verdict === 'spam') return t('rc.spam', { tail });
+  if (rc.verdict === 'unverified') return t('rc.unverified');
+  if (rc.verdict === 'off') return t('rc.off');
   return String(rc.verdict);
 }
 
 function timelineHTML(lead) {
-  return (lead.events || []).slice().reverse().map(eventHTML).join('') || '<p class="muted">Sin eventos.</p>';
+  return (lead.events || []).slice().reverse().map(eventHTML).join('') || `<p class="muted">${t('tl.none')}</p>`;
 }
+// Las notas automáticas (creado, tareas, spam) llegan ya traducidas por el servidor (X-Wy-Lang);
+// las notas escritas a mano por el equipo se muestran tal cual.
 function eventHTML(ev) {
   let txt = '', cls = ev.type;
-  if (ev.type === 'created') txt = `Lead registrado${ev.note ? ` · ${esc(ev.note)}` : ''}`;
-  else if (ev.type === 'status') { cls = ev.to_status; txt = `Movido a <b>${esc(STATUS_LABELS[ev.to_status] || ev.to_status)}</b>${ev.loss_reason ? ` — ${esc(lossLabel(ev.loss_reason))}` : ''}`; }
-  else if (ev.type === 'note') txt = `Nota: ${esc(ev.note)}`;
-  else if (ev.type === 'task') txt = `⏰ ${esc(ev.note || 'Tarea creada')}`;
-  else if (ev.type === 'task_done') txt = `✓ ${esc(ev.note || 'Tarea completada')}`;
-  else if (ev.type === 'spam') txt = esc(ev.note || 'Cambio de spam');
+  if (ev.type === 'created') txt = `${t('tl.created')}${ev.note ? ` · ${esc(ev.note)}` : ''}`;
+  else if (ev.type === 'status') { cls = ev.to_status; txt = `${t('tl.moved', { s: esc(statusLabel(ev.to_status)) })}${ev.loss_reason ? ` — ${esc(lossLabel(ev.loss_reason))}` : ''}`; }
+  else if (ev.type === 'note') txt = t('tl.note', { n: esc(ev.note) });
+  else if (ev.type === 'task') txt = `⏰ ${esc(ev.note || t('tl.taskCreated'))}`;
+  else if (ev.type === 'task_done') txt = `✓ ${esc(ev.note || t('tl.taskDone'))}`;
+  else if (ev.type === 'spam') txt = esc(ev.note || t('tl.spamChange'));
   else txt = esc(ev.note || ev.type);
   return `<div class="tl ${esc(cls)}"><span class="dot"></span><div class="body"><div class="t">${txt}</div><div class="d">${fmtDateTime(ev.created_at)}${ev.user_name ? ' · ' + esc(ev.user_name) : ''}</div></div></div>`;
 }
@@ -1006,12 +1049,12 @@ document.addEventListener('click', (e) => { const m = $('#modal'); if (m && e.ta
 function openLossModal(onConfirm) {
   const opts = Object.entries(lossReasons()).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
   modal(`
-    <h2>Marcar como Perdido</h2>
-    <p class="desc">Selecciona el motivo de pérdida para el reporte.</p>
-    <div class="field"><label>Motivo</label><select id="loss-r">${opts}</select></div>
+    <h2>${t('loss.title')}</h2>
+    <p class="desc">${t('loss.desc')}</p>
+    <div class="field"><label>${t('loss.reason')}</label><select id="loss-r">${opts}</select></div>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" id="loss-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-sm" id="loss-ok">Confirmar pérdida</button>
+      <button class="btn btn-ghost btn-sm" id="loss-cancel">${t('common.cancel')}</button>
+      <button class="btn btn-primary btn-sm" id="loss-ok">${t('loss.confirm')}</button>
     </div>`);
   $('#loss-cancel').addEventListener('click', () => { closeModal(); if (state.view === 'kanban') paintKanban(); });
   $('#loss-ok').addEventListener('click', () => { const r = $('#loss-r').value; closeModal(); onConfirm(r); });
@@ -1020,37 +1063,37 @@ function openLossModal(onConfirm) {
 function openNewLead() {
   const ownerOpts = usersForSelect().map((u) => `<option value="${u.id}" ${u.id === state.me.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
   modal(`
-    <h2>Nuevo lead</h2>
-    <p class="desc">Registro manual (llamada, WhatsApp directo, referido…).</p>
+    <h2>${t('newLead.title')}</h2>
+    <p class="desc">${t('newLead.desc')}</p>
     <div class="form-row">
-      <div class="field"><label>Nombre</label><input id="n-name"></div>
-      <div class="field"><label>Móvil</label><input id="n-mobile" placeholder="04xx xxx xxx"></div>
+      <div class="field"><label>${t('field.name')}</label><input id="n-name"></div>
+      <div class="field"><label>${t('field.mobile')}</label><input id="n-mobile" placeholder="04xx xxx xxx"></div>
     </div>
     <div class="form-row">
-      <div class="field"><label>Correo</label><input id="n-email" type="email"></div>
-      <div class="field"><label>Servicio</label><select id="n-service"><option value="">— (solo contacto)</option>${Object.entries(services()).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div>
+      <div class="field"><label>${t('field.email')}</label><input id="n-email" type="email"></div>
+      <div class="field"><label>${t('field.service')}</label><select id="n-service"><option value="">${t('field.contactOnly')}</option>${Object.entries(services()).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></div>
     </div>
     <div class="form-row-3">
       <div class="field"><label>Suburb</label><input id="n-suburb"></div>
       <div class="field"><label>Postcode</label><input id="n-postcode" inputmode="numeric" maxlength="4"></div>
-      <div class="field"><label>Ciudad</label><input id="n-city" placeholder="Adelaide"></div>
+      <div class="field"><label>${t('field.city')}</label><input id="n-city" placeholder="Adelaide"></div>
     </div>
-    <div class="field"><label>Artículos (uno por línea)</label><textarea id="n-items" rows="3"></textarea></div>
-    <div class="field"><label>Notas</label><textarea id="n-notes" rows="2"></textarea></div>
-    <div class="field"><label>Responsable</label><select id="n-owner">${ownerOpts}</select></div>
+    <div class="field"><label>${t('field.itemsPerLine')}</label><textarea id="n-items" rows="3"></textarea></div>
+    <div class="field"><label>${t('field.notes')}</label><textarea id="n-notes" rows="2"></textarea></div>
+    <div class="field"><label>${t('field.owner')}</label><select id="n-owner">${ownerOpts}</select></div>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" id="n-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-sm" id="n-ok">Crear lead</button>
+      <button class="btn btn-ghost btn-sm" id="n-cancel">${t('common.cancel')}</button>
+      <button class="btn btn-primary btn-sm" id="n-ok">${t('newLead.create')}</button>
     </div>`, 'wide');
   $('#n-cancel').addEventListener('click', closeModal);
   $('#n-ok').addEventListener('click', async () => {
     const g = (id) => $(id).value.trim();
     const body = { name: g('#n-name'), mobile: g('#n-mobile'), email: g('#n-email'), service: g('#n-service') || null, suburb: g('#n-suburb'), postcode: g('#n-postcode'), city: g('#n-city'), items: $('#n-items').value, notes: $('#n-notes').value, owner_id: Number($('#n-owner').value) || null, source: 'manual' };
-    if (!body.name) { toast('Falta el nombre', 'err'); return; }
-    if (!body.mobile && !body.email) { toast('Hace falta móvil o correo', 'err'); return; }
-    if (body.postcode && !/^\d{4}$/.test(body.postcode)) { toast('El postcode son 4 dígitos', 'err'); return; }
-    try { await api('POST', '/api/leads', body); closeModal(); await loadLeads(); if (state.view === 'kanban') paintKanban(); else if (state.view === 'leads') { paintFilterSelects(); paintLeads(); } toast('Lead creado'); }
-    catch (e) { if (e.message !== 'unauth') toast('Error al crear', 'err'); }
+    if (!body.name) { toast(t('newLead.needName'), 'err'); return; }
+    if (!body.mobile && !body.email) { toast(t('detail.needContact'), 'err'); return; }
+    if (body.postcode && !/^\d{4}$/.test(body.postcode)) { toast(t('detail.postcode4'), 'err'); return; }
+    try { await api('POST', '/api/leads', body); closeModal(); await loadLeads(); if (state.view === 'kanban') paintKanban(); else if (state.view === 'leads') { paintFilterSelects(); paintLeads(); } toast(t('newLead.created')); }
+    catch (e) { if (e.message !== 'unauth') toast(t('common.errCreate'), 'err'); }
   });
 }
 
@@ -1063,15 +1106,15 @@ async function viewTasks() {
   const granted = canNotify && Notification.permission === 'granted';
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">Recordatorios</span><h1>Tareas</h1></div>
+      <div><span class="ey">${t('tasks.ey')}</span><h1>${t('tasks.h1')}</h1></div>
       <div class="tools">
-        <div class="seg" id="tk-scope"><button data-s="mine" class="${state.taskScope === 'mine' ? 'active' : ''}">Mías</button><button data-s="all" class="${state.taskScope === 'all' ? 'active' : ''}">Todas</button></div>
-        <div class="seg" id="tk-tab"><button data-t="open" class="${state.taskTab === 'open' ? 'active' : ''}">Abiertas</button><button data-t="done" class="${state.taskTab === 'done' ? 'active' : ''}">Hechas</button></div>
-        ${canNotify ? (granted ? '<span class="pill-ok">Avisos del navegador activos</span>' : '<button class="btn btn-ghost btn-sm" id="tk-notif">Activar avisos del navegador</button>') : ''}
+        <div class="seg" id="tk-scope"><button data-s="mine" class="${state.taskScope === 'mine' ? 'active' : ''}">${t('tasks.mine')}</button><button data-s="all" class="${state.taskScope === 'all' ? 'active' : ''}">${t('tasks.all')}</button></div>
+        <div class="seg" id="tk-tab"><button data-t="open" class="${state.taskTab === 'open' ? 'active' : ''}">${t('tasks.open')}</button><button data-t="done" class="${state.taskTab === 'done' ? 'active' : ''}">${t('tasks.doneTab')}</button></div>
+        ${canNotify ? (granted ? `<span class="pill-ok">${t('tasks.notifOn')}</span>` : `<button class="btn btn-ghost btn-sm" id="tk-notif">${t('tasks.notifTurnOn')}</button>`) : ''}
       </div>
     </div>
-    <p class="help" style="margin:-10px 0 18px;max-width:78ch">Las tareas se crean desde la ficha de cada lead. Al vencer, aparece un aviso abajo a la derecha (mientras el panel esté abierto), llega un correo al responsable (o a los administradores si la tarea no tiene responsable) y, si activas los avisos del navegador, también una notificación del sistema.</p>
-    <div id="tasks-wrap"><div class="empty">Cargando…</div></div>`;
+    <p class="help" style="margin:-10px 0 18px;max-width:78ch">${t('tasks.help')}</p>
+    <div id="tasks-wrap"><div class="empty">${t('common.loading')}</div></div>`;
 
   $('#tk-scope').addEventListener('click', (e) => { const b = e.target.closest('button[data-s]'); if (!b) return; state.taskScope = b.dataset.s; $('#tk-scope').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)); paintTasksView(); });
   $('#tk-tab').addEventListener('click', (e) => { const b = e.target.closest('button[data-t]'); if (!b) return; state.taskTab = b.dataset.t; $('#tk-tab').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)); paintTasksView(); });
@@ -1079,9 +1122,9 @@ async function viewTasks() {
   if (nb) nb.addEventListener('click', async () => {
     try {
       const p = await Notification.requestPermission();
-      if (p === 'granted') { toast('Avisos del navegador activados'); viewTasks(); }
-      else toast('El navegador no concedió el permiso', 'err');
-    } catch (e) { toast('No se pudo pedir el permiso', 'err'); }
+      if (p === 'granted') { toast(t('tasks.notifGranted')); viewTasks(); }
+      else toast(t('tasks.notifDenied'), 'err');
+    } catch (e) { toast(t('tasks.notifErr'), 'err'); }
   });
   wireTasksWrap($('#tasks-wrap'));
   await paintTasksView();
@@ -1091,36 +1134,36 @@ async function paintTasksView() {
   const wrap = $('#tasks-wrap'); if (!wrap) return;
   let rows = [];
   try { rows = (await api('GET', `/api/tasks?scope=${state.taskScope}&state=${state.taskTab}`)) || []; }
-  catch (e) { if (e.message !== 'unauth') wrap.innerHTML = '<div class="empty">No se pudieron cargar las tareas.</div>'; return; }
+  catch (e) { if (e.message !== 'unauth') wrap.innerHTML = `<div class="empty">${t('tasks.errLoad')}</div>`; return; }
   if (!rows.length) {
-    wrap.innerHTML = `<div class="empty"><div class="big">${state.taskTab === 'done' ? 'Nada hecho todavía' : 'Sin tareas pendientes'}</div>${state.taskTab === 'done' ? 'Las tareas marcadas como hechas aparecerán aquí.' : 'Crea recordatorios desde la ficha de un lead: "Llamar en 1 h", "Mañana 9:00"…'}</div>`;
+    wrap.innerHTML = `<div class="empty"><div class="big">${state.taskTab === 'done' ? t('tasks.emptyDoneBig') : t('tasks.emptyOpenBig')}</div>${state.taskTab === 'done' ? t('tasks.emptyDone') : t('tasks.emptyOpen')}</div>`;
     return;
   }
   const now = new Date();
-  const dateLab = (iso) => { const d = new Date(iso); const tom = new Date(now); tom.setDate(now.getDate() + 1); return sameDay(d, now) ? 'hoy' : sameDay(d, tom) ? 'mañana' : d.toLocaleDateString('es', { day: '2-digit', month: 'short' }).replace('.', ''); };
-  const rowHTML = (t) => {
-    const d = new Date(t.due_at);
-    const overdue = !t.done && (t.overdue || d < now);
+  const dateLab = (iso) => { const d = new Date(iso); const tom = new Date(now); tom.setDate(now.getDate() + 1); return sameDay(d, now) ? t('day.today') : sameDay(d, tom) ? t('day.tomorrow') : d.toLocaleDateString(dateLocale(), { day: dayOpt(), month: 'short' }).replace('.', ''); };
+  const rowHTML = (task) => {
+    const d = new Date(task.due_at);
+    const overdue = !task.done && (task.overdue || d < now);
     return `<div class="task-row ${overdue ? 'overdue' : ''}">
-      <div class="tk-when"><b>${pad(d.getHours())}:${pad(d.getMinutes())}</b><span>${t.done ? fmtDate(t.done_at || t.due_at) : dateLab(t.due_at)}</span></div>
+      <div class="tk-when"><b>${pad(d.getHours())}:${pad(d.getMinutes())}</b><span>${task.done ? fmtDate(task.done_at || task.due_at) : dateLab(task.due_at)}</span></div>
       <div class="tk-body">
-        <div class="tk-title">${esc(t.title)}</div>
-        <div class="tk-meta"><a href="#lead-${Number(t.lead_id)}">${esc(t.lead_name || `Lead #${t.lead_id}`)}</a>${t.lead_mobile ? ` · ${esc(t.lead_mobile)}` : ''} · ${t.user_name ? esc(t.user_name) : 'Cualquiera'}${t.done ? ` · hecha ${fmtDateTime(t.done_at)}` : ''}</div>
+        <div class="tk-title">${esc(task.title)}</div>
+        <div class="tk-meta"><a href="#lead-${Number(task.lead_id)}">${esc(task.lead_name || `Lead #${task.lead_id}`)}</a>${task.lead_mobile ? ` · ${esc(task.lead_mobile)}` : ''} · ${task.user_name ? esc(task.user_name) : t('common.anyone')}${task.done ? t('tasks.doneAt', { d: fmtDateTime(task.done_at) }) : ''}</div>
       </div>
       <div class="tk-actions">
-        <button class="btn btn-ghost btn-sm" data-go="${Number(t.lead_id)}">Ver lead</button>
-        ${t.done ? `<button class="btn btn-ghost btn-sm" data-reopen="${Number(t.id)}">Reabrir</button>` : `<button class="btn btn-primary btn-sm" data-done="${Number(t.id)}">Hecha</button>`}
+        <button class="btn btn-ghost btn-sm" data-go="${Number(task.lead_id)}">${t('tasks.viewLead')}</button>
+        ${task.done ? `<button class="btn btn-ghost btn-sm" data-reopen="${Number(task.id)}">${t('tasks.reopen')}</button>` : `<button class="btn btn-primary btn-sm" data-done="${Number(task.id)}">${t('tasks.markDone')}</button>`}
       </div>
     </div>`;
   };
   const group = (title, list, cls) => list.length ? `<div class="task-group ${cls}"><h3>${title} <span class="cnt">${list.length}</span></h3>${list.map(rowHTML).join('')}</div>` : '';
 
   if (state.taskTab === 'done') {
-    wrap.innerHTML = group('Hechas', rows.slice().sort((a, b) => new Date(b.done_at || b.due_at) - new Date(a.done_at || a.due_at)), 'done');
+    wrap.innerHTML = group(t('tasks.gDone'), rows.slice().sort((a, b) => new Date(b.done_at || b.due_at) - new Date(a.done_at || a.due_at)), 'done');
   } else {
     const g = { late: [], today: [], soon: [] };
-    rows.forEach((t) => { const d = new Date(t.due_at); if (t.overdue || d < now) g.late.push(t); else if (sameDay(d, now)) g.today.push(t); else g.soon.push(t); });
-    wrap.innerHTML = group('Vencidas', g.late, 'late') + group('Hoy', g.today, 'today') + group('Próximas', g.soon, 'soon');
+    rows.forEach((task) => { const d = new Date(task.due_at); if (task.overdue || d < now) g.late.push(task); else if (sameDay(d, now)) g.today.push(task); else g.soon.push(task); });
+    wrap.innerHTML = group(t('tasks.gLate'), g.late, 'late') + group(t('tasks.gToday'), g.today, 'today') + group(t('tasks.gSoon'), g.soon, 'soon');
   }
 }
 
@@ -1128,8 +1171,8 @@ async function paintTasksView() {
 function wireTasksWrap(wrap) {
   wrap.addEventListener('click', async (e) => {
     const go = e.target.closest('[data-go]'); if (go) { openLead(Number(go.dataset.go)); return; }
-    const dn = e.target.closest('[data-done]'); if (dn) { dn.disabled = true; try { await completeTask(Number(dn.dataset.done)); } catch (err) { dn.disabled = false; if (err.message !== 'unauth') toast('No se pudo actualizar', 'err'); } return; }
-    const ro = e.target.closest('[data-reopen]'); if (ro) { try { await api('PATCH', `/api/tasks/${Number(ro.dataset.reopen)}`, { done: false }); toast('Tarea reabierta'); paintTasksView(); pollTasks(); } catch (err) { if (err.message !== 'unauth') toast('No se pudo reabrir', 'err'); } }
+    const dn = e.target.closest('[data-done]'); if (dn) { dn.disabled = true; try { await completeTask(Number(dn.dataset.done)); } catch (err) { dn.disabled = false; if (err.message !== 'unauth') toast(t('common.errUpdate'), 'err'); } return; }
+    const ro = e.target.closest('[data-reopen]'); if (ro) { try { await api('PATCH', `/api/tasks/${Number(ro.dataset.reopen)}`, { done: false }); toast(t('task.reopened')); paintTasksView(); pollTasks(); } catch (err) { if (err.message !== 'unauth') toast(t('tasks.errReopen'), 'err'); } }
   });
 }
 
@@ -1137,7 +1180,7 @@ function wireTasksWrap(wrap) {
 async function completeTask(taskId) {
   await api('PATCH', `/api/tasks/${taskId}`, { done: true });
   removeAlert(taskId);
-  toast('Tarea hecha');
+  toast(t('task.done'));
   pollTasks();
   if (state.view === 'tasks') paintTasksView();
   else if (state.view === 'leadDetail') viewLeadDetail(state.detailId);
@@ -1166,40 +1209,48 @@ function paintTaskBadge() {
 }
 function updateTitle() {
   const n = (state.summary && Number(state.summary.overdue)) || 0;
-  document.title = n ? `(${n}) Wyelee CRM` : 'Wyelee · Panel';
+  document.title = n ? `(${n}) Wyelee CRM` : t('app.title');
 }
 // Aviso apilable en la esquina superior derecha; no desaparece solo
-function showTaskAlert(t) {
-  const host = $('#alerts'); if (!host || !t) return;
-  if (host.querySelector(`[data-task="${Number(t.id)}"]`)) return;
-  const el = document.createElement('div');
-  el.className = 'alert-task'; el.dataset.task = String(Number(t.id));
+const alertTasks = new Map(); // id → tarea, para repintar los avisos abiertos al cambiar de idioma
+function fillTaskAlert(el, task) {
   el.innerHTML = `
     <div class="at-head">
       <span class="at-ico">⏰</span>
-      <div class="at-txt"><b>${esc(t.title)}</b><span>${esc(t.lead_name || `Lead #${t.lead_id}`)} · ${fmtDue(t.due_at)}</span></div>
-      <button class="at-x" title="Cerrar aviso">×</button>
+      <div class="at-txt"><b>${esc(task.title)}</b><span>${esc(task.lead_name || `Lead #${task.lead_id}`)} · ${fmtDue(task.due_at)}</span></div>
+      <button class="at-x" title="${esc(t('alert.dismiss'))}">×</button>
     </div>
     <div class="at-actions">
-      <button class="btn btn-ghost btn-sm" data-go>Ver lead</button>
-      <button class="btn btn-primary btn-sm" data-done>Hecha</button>
+      <button class="btn btn-ghost btn-sm" data-go>${t('tasks.viewLead')}</button>
+      <button class="btn btn-primary btn-sm" data-done>${t('tasks.markDone')}</button>
     </div>`;
-  el.querySelector('.at-x').addEventListener('click', () => el.remove());
-  el.querySelector('[data-go]').addEventListener('click', () => openLead(Number(t.lead_id)));
+  el.querySelector('.at-x').addEventListener('click', () => { el.remove(); alertTasks.delete(Number(task.id)); });
+  el.querySelector('[data-go]').addEventListener('click', () => openLead(Number(task.lead_id)));
   el.querySelector('[data-done]').addEventListener('click', async (e) => {
     e.target.disabled = true;
-    try { await completeTask(Number(t.id)); } catch (err) { e.target.disabled = false; if (err.message !== 'unauth') toast('No se pudo marcar', 'err'); }
+    try { await completeTask(Number(task.id)); } catch (err) { e.target.disabled = false; if (err.message !== 'unauth') toast(t('alert.errMark'), 'err'); }
   });
+}
+function showTaskAlert(task) {
+  const host = $('#alerts'); if (!host || !task) return;
+  if (host.querySelector(`[data-task="${Number(task.id)}"]`)) return;
+  const el = document.createElement('div');
+  el.className = 'alert-task'; el.dataset.task = String(Number(task.id));
+  alertTasks.set(Number(task.id), task);
+  fillTaskAlert(el, task);
   host.appendChild(el);
   // Notificación del sistema si el usuario la activó en la vista Tareas
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const n = new Notification(`⏰ ${t.title}`, { body: `${t.lead_name || 'Lead'} · ${fmtDue(t.due_at)}`, tag: `wy-task-${t.id}`, icon: `${location.origin}/crm/assets/favicon.png` });
-      n.onclick = () => { try { window.focus(); } catch (e2) {} location.hash = `lead-${Number(t.lead_id)}`; n.close(); };
+      const n = new Notification(`⏰ ${task.title}`, { body: `${task.lead_name || 'Lead'} · ${fmtDue(task.due_at)}`, tag: `wy-task-${task.id}`, icon: `${location.origin}/crm/assets/favicon.png` });
+      n.onclick = () => { try { window.focus(); } catch (e2) {} location.hash = `lead-${Number(task.lead_id)}`; n.close(); };
     } catch (e) {}
   }
 }
-function removeAlert(taskId) { const el = $(`#alerts [data-task="${Number(taskId)}"]`); if (el) el.remove(); }
+function repaintAlerts() {
+  document.querySelectorAll('#alerts .alert-task').forEach((el) => { const task = alertTasks.get(Number(el.dataset.task)); if (task) fillTaskAlert(el, task); });
+}
+function removeAlert(taskId) { const el = $(`#alerts [data-task="${Number(taskId)}"]`); if (el) el.remove(); alertTasks.delete(Number(taskId)); }
 
 // ============================================================
 //  USUARIOS (solo admin)
@@ -1207,25 +1258,26 @@ function removeAlert(taskId) { const el = $(`#alerts [data-task="${Number(taskId
 async function viewUsers() {
   const v = $('#view');
   try { state.users = await api('GET', '/api/users'); }
-  catch (e) { if (e.message !== 'unauth') v.innerHTML = '<div class="empty"><div class="big">Acceso restringido</div>Solo los administradores pueden ver los usuarios.</div>'; return; }
+  catch (e) { if (e.message !== 'unauth') v.innerHTML = `<div class="empty"><div class="big">${t('common.restricted')}</div>${t('users.restricted')}</div>`; return; }
   const admin = isAdmin();
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">Equipo</span><h1>Usuarios del panel</h1></div>
-      <div class="tools">${admin ? '<button class="btn btn-primary btn-sm" id="new-user">+ Crear usuario</button>' : ''}</div>
+      <div><span class="ey">${t('users.ey')}</span><h1>${t('users.h1')}</h1></div>
+      <div class="tools">${admin ? `<button class="btn btn-primary btn-sm" id="new-user">${t('users.new')}</button>` : ''}</div>
     </div>
-    <p class="help" style="margin:-10px 0 16px">Cada usuario entra con su correo mediante enlace de acceso. El rol <b>Comercial</b> gestiona leads y tareas; el <b>Administrador</b> además elimina leads y administra usuarios, redirecciones e integraciones.</p>
+    <p class="help" style="margin:-10px 0 16px">${t('users.help')}</p>
     <div class="panel"><table><thead><tr>
-      <th>Usuario</th><th>Correo</th><th>Rol</th><th>Estado</th>${admin ? '<th></th>' : ''}
+      <th>${t('users.th.user')}</th><th>${t('users.th.email')}</th><th>${t('users.th.role')}</th><th>${t('users.th.lang')}</th><th>${t('users.th.status')}</th>${admin ? '<th></th>' : ''}
     </tr></thead><tbody>
     ${state.users.map((u) => `<tr>
       <td><div style="display:flex;align-items:center;gap:10px"><span class="avatar" style="width:30px;height:30px;font-size:.72rem">${initials(u.name)}</span><span class="lead-nm" style="font-size:.92rem">${esc(u.name)}</span></div></td>
       <td>${esc(u.email)}</td>
       <td><span class="status-pill ${u.role === 'admin' ? 'st-ganado' : 'st-nuevo'}">${roleLabel(u.role)}</span></td>
-      <td>${u.active ? '<span style="color:var(--green-text);font-weight:700">● Activo</span>' : '<span style="color:var(--mute)">○ Inactivo</span>'}</td>
+      <td>${LANGS.includes(u.lang) ? `<span class="lang-tag" lang="${u.lang}" title="${esc(t('lang.name.' + u.lang))}">${u.lang.toUpperCase()}</span>` : '<span style="color:var(--mute)">—</span>'}</td>
+      <td>${u.active ? `<span style="color:var(--green-text);font-weight:700">● ${t('common.active')}</span>` : `<span style="color:var(--mute)">○ ${t('common.inactive')}</span>`}</td>
       ${admin ? `<td style="text-align:right;white-space:nowrap">
-        ${u.id !== state.me.id && u.active ? `<button class="btn btn-ghost btn-sm" data-imp="${u.id}">Entrar como</button>` : ''}
-        <button class="btn btn-ghost btn-sm" data-edit="${u.id}">Editar</button>
+        ${u.id !== state.me.id && u.active ? `<button class="btn btn-ghost btn-sm" data-imp="${u.id}">${t('users.impersonate')}</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-edit="${u.id}">${t('common.edit')}</button>
       </td>` : ''}
     </tr>`).join('')}
     </tbody></table></div>`;
@@ -1235,55 +1287,72 @@ async function viewUsers() {
     v.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => openEditUser(state.users.find((u) => u.id === Number(b.dataset.edit)))));
     v.querySelectorAll('[data-imp]').forEach((b) => b.addEventListener('click', async () => {
       const u = state.users.find((x) => x.id === Number(b.dataset.imp));
-      if (!u || !confirm(`¿Entrar al panel como ${u.name}? Navegarás con los permisos de ${roleLabel(u.role)}. Podrás volver a tu cuenta cuando quieras.`)) return;
+      if (!u || !confirm(t('users.confirmImp', { name: u.name, role: roleLabel(u.role) }))) return;
       try { await api('POST', `/api/users/${u.id}/impersonate`); location.reload(); }
-      catch (e) { if (e.message !== 'unauth') toast('No se pudo entrar como usuario', 'err'); }
+      catch (e) { if (e.message !== 'unauth') toast(t('users.errImp'), 'err'); }
     }));
   }
 }
 
+// Idioma del usuario (users.lang): panel + correos que recibe. Los nombres van en su propio idioma.
+const langOptions = (cur) => LANGS.map((l) => `<option value="${l}" lang="${l}" ${cur === l ? 'selected' : ''}>${esc(t('lang.name.' + l))}</option>`).join('');
+
 function openNewUser() {
   modal(`
-    <h2>Crear usuario</h2>
-    <p class="desc">Podrá acceder con su correo mediante enlace de acceso.</p>
-    <div class="field"><label>Nombre completo</label><input id="u-name"></div>
-    <div class="field"><label>Correo</label><input id="u-email" type="email"></div>
-    <div class="field"><label>Rol</label><select id="u-role">${ROLES.map((r) => `<option value="${r}" ${r === 'comercial' ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}</select></div>
+    <h2>${t('users.createT')}</h2>
+    <p class="desc">${t('users.createDesc')}</p>
+    <div class="field"><label>${t('field.fullName')}</label><input id="u-name"></div>
+    <div class="field"><label>${t('field.email')}</label><input id="u-email" type="email"></div>
+    <div class="form-row">
+      <div class="field"><label>${t('field.role')}</label><select id="u-role">${ROLES.map((r) => `<option value="${r}" ${r === 'comercial' ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}</select></div>
+      <div class="field"><label>${t('field.lang')}</label><select id="u-lang">${langOptions('en')}</select></div>
+    </div>
+    <p class="field-help" style="margin:-6px 0 4px">${t('users.langHelp')}</p>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" id="u-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-sm" id="u-ok">Crear</button>
+      <button class="btn btn-ghost btn-sm" id="u-cancel">${t('common.cancel')}</button>
+      <button class="btn btn-primary btn-sm" id="u-ok">${t('common.create')}</button>
     </div>`);
   $('#u-cancel').addEventListener('click', closeModal);
   $('#u-ok').addEventListener('click', async () => {
-    const body = { name: $('#u-name').value.trim(), email: $('#u-email').value.trim(), role: $('#u-role').value };
-    if (!body.name || !body.email) { toast('Nombre y correo requeridos', 'err'); return; }
-    try { await api('POST', '/api/users', body); closeModal(); viewUsers(); toast('Usuario creado'); }
-    catch (e) { if (e.message !== 'unauth') toast(/exist/i.test(e.message) ? 'Ese correo ya existe' : 'Error al crear', 'err'); }
+    const body = { name: $('#u-name').value.trim(), email: $('#u-email').value.trim(), role: $('#u-role').value, lang: $('#u-lang').value };
+    if (!body.name || !body.email) { toast(t('users.needNameEmail'), 'err'); return; }
+    try { await api('POST', '/api/users', body); closeModal(); viewUsers(); toast(t('users.created')); }
+    catch (e) { if (e.message !== 'unauth') toast(e.code === 'email_taken' || /exist/i.test(e.message) ? t('users.emailExists') : t('common.errCreate'), 'err'); }
   });
 }
 
 function openEditUser(u) {
   if (!u) return;
   modal(`
-    <h2>Editar usuario</h2>
-    <p class="desc">Actualiza los datos, el rol y si está activo. Un usuario inactivo no puede pedir enlaces de acceso.</p>
-    <div class="field"><label>Nombre completo</label><input id="u-name" value="${esc(u.name)}"></div>
-    <div class="field"><label>Correo</label><input id="u-email" type="email" value="${esc(u.email)}"></div>
-    <div class="field"><label>Rol</label><select id="u-role">${ROLES.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}</select></div>
-    <div class="field"><label>Estado</label><select id="u-active">
-      <option value="1" ${u.active ? 'selected' : ''}>Activo</option>
-      <option value="0" ${!u.active ? 'selected' : ''}>Inactivo</option>
+    <h2>${t('users.editT')}</h2>
+    <p class="desc">${t('users.editDesc')}</p>
+    <div class="field"><label>${t('field.fullName')}</label><input id="u-name" value="${esc(u.name)}"></div>
+    <div class="field"><label>${t('field.email')}</label><input id="u-email" type="email" value="${esc(u.email)}"></div>
+    <div class="form-row">
+      <div class="field"><label>${t('field.role')}</label><select id="u-role">${ROLES.map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabel(r)}</option>`).join('')}</select></div>
+      <div class="field"><label>${t('field.lang')}</label><select id="u-lang">${langOptions(LANGS.includes(u.lang) ? u.lang : 'en')}</select></div>
+    </div>
+    <p class="field-help" style="margin:-6px 0 14px">${t('users.langHelp')}</p>
+    <div class="field"><label>${t('field.status')}</label><select id="u-active">
+      <option value="1" ${u.active ? 'selected' : ''}>${t('common.active')}</option>
+      <option value="0" ${!u.active ? 'selected' : ''}>${t('common.inactive')}</option>
     </select></div>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" id="u-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-sm" id="u-ok">Guardar cambios</button>
+      <button class="btn btn-ghost btn-sm" id="u-cancel">${t('common.cancel')}</button>
+      <button class="btn btn-primary btn-sm" id="u-ok">${t('common.saveChanges')}</button>
     </div>`);
   $('#u-cancel').addEventListener('click', closeModal);
   $('#u-ok').addEventListener('click', async () => {
-    const body = { name: $('#u-name').value.trim(), email: $('#u-email').value.trim(), role: $('#u-role').value, active: Number($('#u-active').value) };
-    if (!body.name || !body.email) { toast('Nombre y correo requeridos', 'err'); return; }
-    try { await api('PATCH', `/api/users/${u.id}`, body); closeModal(); viewUsers(); toast('Usuario actualizado'); }
-    catch (e) { if (e.message !== 'unauth') toast(/exist/i.test(e.message) ? 'Ese correo ya existe' : 'Error al guardar', 'err'); }
+    const body = { name: $('#u-name').value.trim(), email: $('#u-email').value.trim(), role: $('#u-role').value, active: Number($('#u-active').value), lang: $('#u-lang').value };
+    if (!body.name || !body.email) { toast(t('users.needNameEmail'), 'err'); return; }
+    try {
+      await api('PATCH', `/api/users/${u.id}`, body); closeModal();
+      // Si el administrador cambió su propio idioma, el panel cambia ya (el servidor ya lo guardó)
+      if (state.me && u.id === state.me.id && !state.me.impersonating && body.lang !== LANG) { state.me.lang = body.lang; setLang(body.lang); }
+      else viewUsers();
+      toast(t('users.updated'));
+    }
+    catch (e) { if (e.message !== 'unauth') toast(e.code === 'email_taken' || /exist/i.test(e.message) ? t('users.emailExists') : t('common.errSave'), 'err'); }
   });
 }
 
@@ -1294,13 +1363,13 @@ async function viewRedirects() {
   const v = $('#view');
   let rows = [];
   try { rows = (await api('GET', '/api/redirects')) || []; }
-  catch (e) { if (e.message !== 'unauth') v.innerHTML = '<div class="empty"><div class="big">Acceso restringido</div>Solo los administradores pueden gestionar redirecciones.</div>'; return; }
+  catch (e) { if (e.message !== 'unauth') v.innerHTML = `<div class="empty"><div class="big">${t('common.restricted')}</div>${t('rd.restricted')}</div>`; return; }
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">SEO</span><h1>Redirecciones</h1></div>
-      <div class="tools"><button class="btn btn-primary btn-sm" id="new-rd">+ Crear redirección</button></div>
+      <div><span class="ey">${t('rd.ey')}</span><h1>${t('rd.h1')}</h1></div>
+      <div class="tools"><button class="btn btn-primary btn-sm" id="new-rd">${t('rd.new')}</button></div>
     </div>
-    <p class="help" style="margin:-10px 0 16px;max-width:76ch">Envía una ruta antigua a una nueva con un <b>301</b> (permanente) o <b>302</b> (temporal). Útil al renombrar páginas: conservas el posicionamiento y no rompes enlaces externos. No aplica a <code>/</code>, <code>/crm</code>, <code>/api</code> ni a los archivos estáticos.</p>
+    <p class="help" style="margin:-10px 0 16px;max-width:76ch">${t('rd.help')}</p>
     <div class="panel"><div id="rd-table"></div></div>`;
   $('#new-rd').addEventListener('click', openNewRedirect);
   paintRedirects(rows);
@@ -1308,58 +1377,59 @@ async function viewRedirects() {
 
 function paintRedirects(rows) {
   const wrap = $('#rd-table'); if (!wrap) return;
-  if (!rows.length) { wrap.innerHTML = `<div class="empty"><div class="big">Sin redirecciones</div>Crea la primera con “+ Crear redirección”.</div>`; return; }
+  if (!rows.length) { wrap.innerHTML = `<div class="empty"><div class="big">${t('rd.emptyBig')}</div>${t('rd.empty')}</div>`; return; }
   wrap.innerHTML = `<table><thead><tr>
-    <th>Origen</th><th>Destino</th><th>Tipo</th><th>Estado</th><th>Hits</th><th></th>
+    <th>${t('rd.th.from')}</th><th>${t('rd.th.to')}</th><th>${t('rd.th.type')}</th><th>${t('rd.th.status')}</th><th>${t('rd.th.hits')}</th><th></th>
     </tr></thead><tbody>
     ${rows.map((r) => `<tr>
       <td><code class="rd-path">${esc(r.from_path)}</code></td>
       <td><span class="rd-arrow">→</span> <code class="rd-path">${esc(r.to_path)}</code></td>
       <td><span class="status-pill ${r.code === 301 ? 'st-ganado' : 'st-contactado'}">${Number(r.code)}</span></td>
-      <td>${r.active ? '<span style="color:var(--green-text);font-weight:700">● Activa</span>' : '<span style="color:var(--mute)">○ Inactiva</span>'}</td>
+      <td>${r.active ? `<span style="color:var(--green-text);font-weight:700">● ${t('common.activeF')}</span>` : `<span style="color:var(--mute)">○ ${t('common.inactiveF')}</span>`}</td>
       <td><span class="mono" style="color:var(--dim)">${Number(r.hits) || 0}</span></td>
       <td style="text-align:right;white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" data-rd-edit="${r.id}">Editar</button>
-        <button class="btn btn-ghost btn-sm danger" data-rd-del="${r.id}">Eliminar</button>
+        <button class="btn btn-ghost btn-sm" data-rd-edit="${r.id}">${t('common.edit')}</button>
+        <button class="btn btn-ghost btn-sm danger" data-rd-del="${r.id}">${t('common.delete')}</button>
       </td>
     </tr>`).join('')}
   </tbody></table>`;
   wrap.querySelectorAll('tbody tr').forEach((tr) => (tr.style.cursor = 'default'));
   wrap.querySelectorAll('[data-rd-edit]').forEach((b) => b.addEventListener('click', () => openEditRedirect(rows.find((x) => x.id === Number(b.dataset.rdEdit)))));
   wrap.querySelectorAll('[data-rd-del]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('¿Eliminar esta redirección?')) return;
-    try { await api('DELETE', `/api/redirects/${Number(b.dataset.rdDel)}`); viewRedirects(); toast('Redirección eliminada'); }
-    catch (e) { if (e.message !== 'unauth') toast('No se pudo eliminar', 'err'); }
+    if (!confirm(t('rd.confirmDelete'))) return;
+    try { await api('DELETE', `/api/redirects/${Number(b.dataset.rdDel)}`); viewRedirects(); toast(t('rd.deleted')); }
+    catch (e) { if (e.message !== 'unauth') toast(t('common.errDelete'), 'err'); }
   }));
 }
 
 function redirectForm(r) {
   const isEdit = !!r;
   return `
-    <h2>${isEdit ? 'Editar redirección' : 'Crear redirección'}</h2>
-    <p class="desc">El origen es una ruta del sitio (ej. <code>/pagina-antigua</code>). El destino puede ser una ruta (<code>/quote/</code>) o una URL completa.</p>
-    <div class="field"><label>Origen (ruta antigua)</label><input id="rd-from" placeholder="/pagina-antigua" value="${esc(r ? r.from_path : '')}"></div>
-    <div class="field"><label>Destino</label><input id="rd-to" placeholder="/pagina-nueva/" value="${esc(r ? r.to_path : '')}"></div>
-    <div class="field"><label>Tipo</label><select id="rd-code">
-      <option value="301" ${!r || r.code === 301 ? 'selected' : ''}>301 — Permanente (recomendado para SEO)</option>
-      <option value="302" ${r && r.code === 302 ? 'selected' : ''}>302 — Temporal</option>
+    <h2>${isEdit ? t('rd.editT') : t('rd.createT')}</h2>
+    <p class="desc">${t('rd.desc')}</p>
+    <div class="field"><label>${t('rd.fromLabel')}</label><input id="rd-from" placeholder="${esc(t('rd.fromPh'))}" value="${esc(r ? r.from_path : '')}"></div>
+    <div class="field"><label>${t('rd.toLabel')}</label><input id="rd-to" placeholder="${esc(t('rd.toPh'))}" value="${esc(r ? r.to_path : '')}"></div>
+    <div class="field"><label>${t('rd.typeLabel')}</label><select id="rd-code">
+      <option value="301" ${!r || r.code === 301 ? 'selected' : ''}>${t('rd.301')}</option>
+      <option value="302" ${r && r.code === 302 ? 'selected' : ''}>${t('rd.302')}</option>
     </select></div>
-    ${isEdit ? `<div class="field"><label>Estado</label><select id="rd-active">
-      <option value="1" ${r.active ? 'selected' : ''}>Activa</option>
-      <option value="0" ${!r.active ? 'selected' : ''}>Inactiva</option>
+    ${isEdit ? `<div class="field"><label>${t('field.status')}</label><select id="rd-active">
+      <option value="1" ${r.active ? 'selected' : ''}>${t('common.activeF')}</option>
+      <option value="0" ${!r.active ? 'selected' : ''}>${t('common.inactiveF')}</option>
     </select></div>` : ''}
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" id="rd-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-sm" id="rd-ok">${isEdit ? 'Guardar' : 'Crear'}</button>
+      <button class="btn btn-ghost btn-sm" id="rd-cancel">${t('common.cancel')}</button>
+      <button class="btn btn-primary btn-sm" id="rd-ok">${isEdit ? t('common.save') : t('common.create')}</button>
     </div>`;
 }
 
+// El servidor responde en el idioma del panel (X-Wy-Lang); se reconoce el caso en es o en y se muestra el texto del panel.
 function redirErr(e) {
-  const m = String((e && e.message) || '');
-  if (/ya existe|exists/i.test(m)) return 'Ya existe una redirección para ese origen';
-  if (/iguales|same/i.test(m)) return 'El origen y el destino no pueden ser iguales';
-  if (/no permitido|not allowed/i.test(m)) return 'Origen no permitido (no uses /, /crm o /api)';
-  return 'No se pudo guardar la redirección';
+  const m = String((e && e.message) || ''), c = (e && e.code) || '';
+  if (c === 'redirect_exists' || /ya existe|exist/i.test(m)) return t('rd.errExists');
+  if (c === 'redirect_same' || /iguales|same/i.test(m)) return t('rd.errSame');
+  if (c === 'redirect_from_forbidden' || c === 'redirect_from_invalid' || /no permitido|not allowed/i.test(m)) return t('rd.errNotAllowed');
+  return t('rd.errSave');
 }
 
 function openNewRedirect() {
@@ -1367,8 +1437,8 @@ function openNewRedirect() {
   $('#rd-cancel').addEventListener('click', closeModal);
   $('#rd-ok').addEventListener('click', async () => {
     const body = { from_path: $('#rd-from').value.trim(), to_path: $('#rd-to').value.trim(), code: Number($('#rd-code').value) };
-    if (!body.from_path || !body.to_path) { toast('Origen y destino requeridos', 'err'); return; }
-    try { await api('POST', '/api/redirects', body); closeModal(); viewRedirects(); toast('Redirección creada'); }
+    if (!body.from_path || !body.to_path) { toast(t('rd.needBoth'), 'err'); return; }
+    try { await api('POST', '/api/redirects', body); closeModal(); viewRedirects(); toast(t('rd.created')); }
     catch (e) { if (e.message !== 'unauth') toast(redirErr(e), 'err'); }
   });
 }
@@ -1379,8 +1449,8 @@ function openEditRedirect(r) {
   $('#rd-cancel').addEventListener('click', closeModal);
   $('#rd-ok').addEventListener('click', async () => {
     const body = { from_path: $('#rd-from').value.trim(), to_path: $('#rd-to').value.trim(), code: Number($('#rd-code').value), active: Number($('#rd-active').value) };
-    if (!body.from_path || !body.to_path) { toast('Origen y destino requeridos', 'err'); return; }
-    try { await api('PATCH', `/api/redirects/${r.id}`, body); closeModal(); viewRedirects(); toast('Redirección actualizada'); }
+    if (!body.from_path || !body.to_path) { toast(t('rd.needBoth'), 'err'); return; }
+    try { await api('PATCH', `/api/redirects/${r.id}`, body); closeModal(); viewRedirects(); toast(t('rd.updated')); }
     catch (e) { if (e.message !== 'unauth') toast(redirErr(e), 'err'); }
   });
 }
@@ -1388,20 +1458,18 @@ function openEditRedirect(r) {
 // ============================================================
 //  INTEGRACIONES (solo admin) — etiquetas + código de terceros del sitio público
 // ============================================================
+// [clave, nombre, placeholder, icono, color] — la ayuda de cada proveedor es t('pv.<clave>.help')
 const PROVIDERS = [
-  ['ga4_id', 'Google Analytics 4', 'G-XXXXXXXXXX', 'ID de medición (Administrar → Flujos de datos → Web). Envía page_view y el evento generate_lead.', 'GA', '#E37400'],
-  ['gtm_id', 'Google Tag Manager', 'GTM-XXXXXXX', 'ID del contenedor. Si gestionas todo desde GTM, deja vacíos los demás para no duplicar etiquetas.', 'TM', '#4285F4'],
-  ['google_ads', 'Google Ads', 'AW-XXXXXXXXX', 'ID de conversión y etiqueta (label) de la acción "Lead". Se dispara al cargar la página de gracias (/thank-you/) tras un envío real.', 'AD', '#34A853'],
-  ['meta_pixel_id', 'Meta Pixel', '1234567890123456', 'ID numérico del píxel (Events Manager). Envía PageView y Lead.', 'f', '#1877F2'],
-  ['tiktok_pixel_id', 'TikTok Pixel', 'CXXXXXXXXXXXXXXXXX', 'ID del píxel (TikTok Ads → Events Manager). Envía SubmitForm en la página de gracias.', 'TT', '#111111'],
-  ['clarity_id', 'Microsoft Clarity', 'abcdefghij', 'ID del proyecto: grabaciones de sesión y mapas de calor, gratis.', 'C', '#0078D4'],
-  ['hotjar_id', 'Hotjar', '1234567', 'Site ID numérico (hjid).', 'H', '#FD3A5C'],
+  ['ga4_id', 'Google Analytics 4', 'G-XXXXXXXXXX', 'GA', '#E37400'],
+  ['gtm_id', 'Google Tag Manager', 'GTM-XXXXXXX', 'TM', '#4285F4'],
+  ['google_ads', 'Google Ads', 'AW-XXXXXXXXX', 'AD', '#34A853'],
+  ['meta_pixel_id', 'Meta Pixel', '1234567890123456', 'f', '#1877F2'],
+  ['tiktok_pixel_id', 'TikTok Pixel', 'CXXXXXXXXXXXXXXXXX', 'TT', '#111111'],
+  ['clarity_id', 'Microsoft Clarity', 'abcdefghij', 'C', '#0078D4'],
+  ['hotjar_id', 'Hotjar', '1234567', 'H', '#FD3A5C'],
 ];
-const CODE_FIELDS = [
-  ['custom_head', 'Inicio de <head>', 'Metas de verificación (Search Console, Meta), scripts que deben cargar antes que nada, CSS de widgets.', '<!-- p. ej. <meta name="google-site-verification" content="…"> -->'],
-  ['custom_body_start', 'Inicio de <body>', 'Fragmentos <noscript> (GTM), barras o banners que deben ir arriba de todo.', '<!-- p. ej. <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-XXXX" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript> -->'],
-  ['custom_body_end', 'Fin de <body>', 'Widgets de chat, botones flotantes, reseñas o reservas que no bloquean la carga.', '<!-- p. ej. <script src="https://embed.tawk.to/XXXX/default" async></script> -->'],
-];
+// Cajas de código incrustado — etiqueta, ayuda y placeholder: t('code.<clave>.label|help|ph')
+const CODE_FIELDS = [['custom_head'], ['custom_body_start'], ['custom_body_end']];
 const SETTING_IDS = ['ga4_id', 'gtm_id', 'google_ads_id', 'google_ads_label', 'meta_pixel_id', 'tiktok_pixel_id', 'clarity_id', 'hotjar_id', 'notify_emails', 'whatsapp_number'];
 const newId = () => Math.random().toString(36).slice(2, 8);
 function parseSnippets(raw) {
@@ -1413,24 +1481,24 @@ function parseSnippets(raw) {
     enabled: s.enabled === 0 || s.enabled === '0' || s.enabled === false ? 0 : 1, code: String(s.code || ''),
   }));
 }
-const excerpt = (code) => String(code || '').replace(/\s+/g, ' ').trim().slice(0, 90) || '(sin código)';
+const excerpt = (code) => String(code || '').replace(/\s+/g, ' ').trim().slice(0, 90) || t('int.noCode');
 // Estado del anti-spam a partir de /api/settings (recaptcha_secret_configured y la clave efectiva son de solo lectura)
 function recaptchaStatus(s) {
   const hasKey = !!(s.recaptcha_site_key_effective || s.recaptcha_site_key);
   const secret = !!s.recaptcha_secret_configured;
-  if (hasKey && secret) return { cls: 'ok', text: '<b>Activo</b> — clave de sitio y secreto configurados. Cada envío de /quote/ y /contact/ se verifica con Google.' };
-  if (hasKey) return { cls: 'warn', text: '<b>Falta RECAPTCHA_SECRET en Vercel</b> — el sitio ya pide el token, pero el servidor todavía no lo verifica: los leads entran como siempre.' };
-  if (secret) return { cls: 'warn', text: '<b>Sin clave de sitio</b> — el secreto ya está en Vercel, pero la verificación queda en pausa hasta guardar aquí la clave de sitio (si no, se retendrían todos los leads).' };
-  return { cls: 'off', text: '<b>Sin clave de sitio</b> — anti-spam desactivado: los leads entran como siempre (solo el campo trampa filtra bots).' };
+  if (hasKey && secret) return { cls: 'ok', text: t('rcst.ok') };
+  if (hasKey) return { cls: 'warn', text: t('rcst.noSecret') };
+  if (secret) return { cls: 'warn', text: t('rcst.noKeyPaused') };
+  return { cls: 'off', text: t('rcst.off') };
 }
 const clampScore = (v) => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) ? (Math.round(Math.min(0.9, Math.max(0.1, n)) * 10) / 10).toFixed(1) : '0.5'; };
 
 async function viewIntegrations() {
   const v = $('#view');
-  v.innerHTML = `<div class="empty">Cargando…</div>`;
+  v.innerHTML = `<div class="empty">${t('common.loading')}</div>`;
   let s;
   try { s = await api('GET', '/api/settings'); }
-  catch (e) { if (e.message !== 'unauth') v.innerHTML = '<div class="empty"><div class="big">Acceso restringido</div>Solo los administradores pueden ver las integraciones.</div>'; return; }
+  catch (e) { if (e.message !== 'unauth') v.innerHTML = `<div class="empty"><div class="big">${t('common.restricted')}</div>${t('int.restricted')}</div>`; return; }
   s = s || {};
   state.settings = s;
   const snippets = parseSnippets(s.snippets);
@@ -1440,110 +1508,110 @@ async function viewIntegrations() {
   const rcFromEnv = s.recaptcha_key_source === 'env';
   const rcSt = recaptchaStatus(s);
 
-  const providerCard = ([key, name, ph, help, ic, color]) => {
+  const providerCard = ([key, name, ph, ic, color]) => {
     const filled = key === 'google_ads' ? !!s.google_ads_id : !!s[key];
     const fields = key === 'google_ads'
-      ? `<div class="field"><label>ID de conversión</label><input id="set-google_ads_id" value="${val('google_ads_id')}" placeholder="AW-XXXXXXXXX" autocomplete="off" spellcheck="false"></div>
-         <div class="field"><label>Etiqueta de conversión</label><input id="set-google_ads_label" value="${val('google_ads_label')}" placeholder="AbCdEfGhIjKlMnOp" autocomplete="off" spellcheck="false"></div>`
-      : `<div class="field"><label>ID</label><input id="set-${key}" value="${val(key)}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false"></div>`;
+      ? `<div class="field"><label>${t('int.convId')}</label><input id="set-google_ads_id" value="${val('google_ads_id')}" placeholder="AW-XXXXXXXXX" autocomplete="off" spellcheck="false"></div>
+         <div class="field"><label>${t('int.convLabel')}</label><input id="set-google_ads_label" value="${val('google_ads_label')}" placeholder="AbCdEfGhIjKlMnOp" autocomplete="off" spellcheck="false"></div>`
+      : `<div class="field"><label>${t('int.id')}</label><input id="set-${key}" value="${val(key)}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false"></div>`;
     return `<div class="provider ${filled ? 'filled' : ''}" data-pv="${key}">
-      <div class="pv-head"><span class="pv-ic" style="background:${color}">${ic}</span><b>${name}</b><span class="pv-on" title="${filled ? 'Configurado' : 'Sin configurar'}"></span></div>
+      <div class="pv-head"><span class="pv-ic" style="background:${color}">${ic}</span><b>${name}</b><span class="pv-on" title="${esc(filled ? t('int.configured') : t('int.notConfigured'))}"></span></div>
       ${fields}
-      <div class="field-help">${help}</div>
+      <div class="field-help">${t(`pv.${key}.help`)}</div>
     </div>`;
   };
 
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">Sitio público</span><h1>Integraciones</h1></div>
-      <div class="tools"><button class="btn btn-primary btn-sm" id="int-save">Guardar</button></div>
+      <div><span class="ey">${t('int.ey')}</span><h1>${t('int.h1')}</h1></div>
+      <div class="tools"><button class="btn btn-primary btn-sm" id="int-save">${t('common.save')}</button></div>
     </div>
     <div class="detail-grid">
       <div class="detail-main">
         <div class="card-box">
           <div class="set-toggle">
-            <div><div class="lab">Etiquetas activas en el sitio</div><div class="help">Interruptor maestro. Apagado, el sitio no carga ninguna herramienta ni fragmento. Las etiquetas <b>no se disparan en localhost</b> ni en la vista previa de GitHub Pages, solo en el dominio real.</div></div>
+            <div><div class="lab">${t('int.masterLab')}</div><div class="help">${t('int.masterHelp')}</div></div>
             <label class="switch"><input type="checkbox" id="set-tracking_enabled" ${on ? 'checked' : ''}><span></span></label>
           </div>
-          <div class="section-t">Proveedores</div>
+          <div class="section-t">${t('int.providers')}</div>
           <div class="providers">${PROVIDERS.map(providerCard).join('')}</div>
         </div>
 
         <div class="card-box">
-          <div class="section-t">Anti-spam de formularios</div>
+          <div class="section-t">${t('int.antispamT')}</div>
           <div class="provider rc-card ${rcSt.cls === 'ok' ? 'filled' : ''}" data-pv="recaptcha">
-            <div class="pv-head"><span class="pv-ic" style="background:#1A73E8">rC</span><b>reCAPTCHA v3 · anti-spam</b><span class="pv-on" title="${rcSt.cls === 'ok' ? 'Activo' : 'Inactivo'}"></span></div>
+            <div class="pv-head"><span class="pv-ic" style="background:#1A73E8">rC</span><b>reCAPTCHA v3 · anti-spam</b><span class="pv-on" title="${esc(rcSt.cls === 'ok' ? t('int.rcActive') : t('int.rcInactive'))}"></span></div>
             <div class="rc-status ${rcSt.cls}" id="rc-status"><i></i><span>${rcSt.text}</span></div>
-            <p class="help" style="margin:0 0 12px">Invisible para el visitante (sin casillas ni acertijos). Protege los formularios <code>/quote/</code> y <code>/contact/</code> y funciona aunque el interruptor de etiquetas de arriba esté apagado.</p>
+            <p class="help" style="margin:0 0 12px">${t('int.rcHelp')}</p>
             <div class="form-row">
-              <div class="field"><label>Clave de sitio (pública)</label>
+              <div class="field"><label>${t('int.siteKey')}</label>
                 <input id="set-recaptcha_site_key" value="${esc(rcFromEnv ? (s.recaptcha_site_key_effective || '') : (s.recaptcha_site_key || ''))}" placeholder="6Lc…" autocomplete="off" spellcheck="false"${rcFromEnv ? ' disabled' : ''}>
-                <div class="field-help">${rcFromEnv ? 'Viene de la variable <code>RECAPTCHA_SITE_KEY</code> de Vercel, que manda sobre este campo. Para cambiarla, edita la variable en Vercel y vuelve a desplegar.' : 'La que Google llama «clave de sitio». Es pública: el sitio la usa para pedir el token al enviar el formulario.'}</div>
+                <div class="field-help">${rcFromEnv ? t('int.siteKeyEnv') : t('int.siteKeyHelp')}</div>
               </div>
-              <div class="field"><label>Puntuación mínima</label>
+              <div class="field"><label>${t('int.minScore')}</label>
                 <input id="set-recaptcha_min_score" type="number" min="0.1" max="0.9" step="0.1" inputmode="decimal" value="${esc(clampScore(s.recaptcha_min_score))}">
-                <div class="field-help">Google puntúa de 0.0 (bot) a 1.0 (humano). Por debajo del umbral el lead queda retenido como spam, sin aviso por correo; puedes recuperarlo en Leads → Spam.</div>
+                <div class="field-help">${t('int.minScoreHelp')}</div>
               </div>
             </div>
             <div class="rc-keys">
-              <b>Dónde se obtienen las claves</b>
-              <p>En <a href="https://www.google.com/recaptcha/admin" target="_blank" rel="noopener noreferrer">google.com/recaptcha/admin</a> con la cuenta <b>wyeleeassembly@gmail.com</b> (tipo «Basado en puntuación (v3)», dominios <code>wyeleeassembly.com.au</code> y <code>wyelee.vercel.app</code>). La <b>clave de sitio</b> va en el campo de arriba. La <b>clave secreta</b> va SOLO en Vercel → Settings → Environment Variables como <code>RECAPTCHA_SECRET</code> (y luego Redeploy): nunca aquí, ni en el código, ni por correo.</p>
+              <b>${t('int.keysT')}</b>
+              <p>${t('int.keysBody', { link: '<a href="https://www.google.com/recaptcha/admin" target="_blank" rel="noopener noreferrer">google.com/recaptcha/admin</a>' })}</p>
             </div>
           </div>
         </div>
 
         <div class="card-box">
-          <div class="section-t">Código incrustado</div>
-          <p class="help" style="margin:-4px 0 16px">Pega aquí HTML o scripts tal como los entrega cada proveedor. Se insertan en todas las páginas del sitio en el punto indicado; los <code>&lt;script&gt;</code> se ejecutan.</p>
-          ${CODE_FIELDS.map(([k, label, help, ph]) => `
+          <div class="section-t">${t('int.codeT')}</div>
+          <p class="help" style="margin:-4px 0 16px">${t('int.codeHelp')}</p>
+          ${CODE_FIELDS.map(([k]) => `
             <div class="code-block">
-              <div class="field"><label>${esc(label)}</label><textarea id="set-${k}" class="code" rows="5" spellcheck="false" placeholder="${esc(ph)}">${val(k)}</textarea></div>
-              <div class="field-help">${esc(help)}</div>
+              <div class="field"><label>${esc(t(`code.${k}.label`))}</label><textarea id="set-${k}" class="code" rows="5" spellcheck="false" placeholder="${esc(t(`code.${k}.ph`))}">${val(k)}</textarea></div>
+              <div class="field-help">${esc(t(`code.${k}.help`))}</div>
             </div>`).join('')}
         </div>
 
         <div class="card-box">
-          <div class="section-t">Fragmentos de terceros <button class="btn btn-ghost btn-sm right" id="sn-add">+ Añadir fragmento</button></div>
-          <p class="help" style="margin:-4px 0 14px">Un fragmento por herramienta, con su nombre y posición, para activarlos o apagarlos sin borrar el código. Ejemplos: widget de chat (Tawk.to, Crisp), reseñas de Google (Elfsight), Calendly, botón de WhatsApp…</p>
+          <div class="section-t">${t('int.snippetsT')} <button class="btn btn-ghost btn-sm right" id="sn-add">${t('int.snippetAdd')}</button></div>
+          <p class="help" style="margin:-4px 0 14px">${t('int.snippetsHelp')}</p>
           <div id="sn-list"></div>
         </div>
 
         <div class="card-box">
-          <div class="section-t">Notificaciones</div>
+          <div class="section-t">${t('int.notifT')}</div>
           <div class="form-row">
-            <div class="field"><label>Correos extra para nuevos leads</label><input id="set-notify_emails" value="${val('notify_emails')}" placeholder="ventas@wyeleeassembly.com.au, otro@correo.com" autocomplete="off"><div class="field-help">Separados por coma. Los administradores activos siempre reciben el aviso.</div></div>
-            <div class="field"><label>WhatsApp del negocio</label><input id="set-whatsapp_number" value="${esc(s.whatsapp_number || DEFAULT_WA)}" placeholder="${DEFAULT_WA}" inputmode="numeric" autocomplete="off"><div class="field-help">Solo dígitos con prefijo de país (61…). Se usa en las plantillas de las acciones rápidas.</div></div>
+            <div class="field"><label>${t('int.notifyEmails')}</label><input id="set-notify_emails" value="${val('notify_emails')}" placeholder="${esc(t('int.notifyEmailsPh'))}" autocomplete="off"><div class="field-help">${t('int.notifyEmailsHelp')}</div></div>
+            <div class="field"><label>${t('int.wa')}</label><input id="set-whatsapp_number" value="${esc(s.whatsapp_number || DEFAULT_WA)}" placeholder="${DEFAULT_WA}" inputmode="numeric" autocomplete="off"><div class="field-help">${t('int.waHelp')}</div></div>
           </div>
         </div>
 
-        <div class="save-bar"><button class="btn btn-primary" id="int-save-2">Guardar cambios</button><span class="help">Los cambios llegan al sitio al guardar (el CDN los refresca en un máximo de 5 minutos).</span></div>
+        <div class="save-bar"><button class="btn btn-primary" id="int-save-2">${t('common.saveChanges')}</button><span class="help">${t('int.saveHelp')}</span></div>
       </div>
 
       <aside class="detail-side">
         <div class="card-box">
-          <div class="section-t">Cómo funciona</div>
+          <div class="section-t">${t('int.howT')}</div>
           <ol class="how">
-            <li>El sitio público carga <code class="mono">js/analytics.js</code>, que lee esta configuración desde el endpoint de abajo tras la primera interacción del visitante.</li>
-            <li>Si el interruptor está activo, inyecta cada herramienta con su ID y los fragmentos en la posición elegida. <b>Sin tocar código ni volver a publicar.</b></li>
-            <li>Al enviarse el formulario de cotización, dispara los eventos de conversión (abajo).</li>
+            <li>${t('int.how1')}</li>
+            <li>${t('int.how2')}</li>
+            <li>${t('int.how3')}</li>
           </ol>
-          <div class="endpoint"><label>Endpoint público (JSON)</label><code>${esc(endpoint)}</code></div>
+          <div class="endpoint"><label>${t('int.endpoint')}</label><code>${esc(endpoint)}</code></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-            <a class="btn btn-ghost btn-sm" href="${esc(endpoint)}" target="_blank" rel="noopener noreferrer">Ver JSON público</a>
-            <button class="btn btn-ghost btn-sm" id="int-copy">Copiar URL</button>
+            <a class="btn btn-ghost btn-sm" href="${esc(endpoint)}" target="_blank" rel="noopener noreferrer">${t('int.viewJson')}</a>
+            <button class="btn btn-ghost btn-sm" id="int-copy">${t('int.copyUrl')}</button>
           </div>
         </div>
         <div class="card-box">
-          <div class="section-t">Eventos de conversión</div>
-          <p class="help" style="margin:0 0 10px">Todo formulario enviado termina en la <strong>página de gracias</strong> <code>/thank-you/</code>. Allí, una sola vez por envío, se disparan:</p>
+          <div class="section-t">${t('int.convT')}</div>
+          <p class="help" style="margin:0 0 10px">${t('int.convIntro')}</p>
           <ul class="ev-list">
             <li><code>dataLayer wyelee_lead</code> GTM (variable <code>lead_source</code>)</li>
             <li><code>gtag generate_lead</code> GA4</li>
-            <li><code>gtag conversion</code> Google Ads (ID/etiqueta)</li>
+            <li><code>gtag conversion</code> ${t('int.convAds')}</li>
             <li><code>fbq Lead</code> Meta Pixel</li>
             <li><code>ttq SubmitForm</code> TikTok Pixel</li>
           </ul>
-          <p class="help" style="margin-top:12px">En GTM crea la conversión con el activador «Evento personalizado» <code>wyelee_lead</code> (variable de capa de datos <code>lead_source</code> = quote | contact; <code>quote_wa</code> | <code>contact_wa</code> cuando el envío cayó a WhatsApp con <code>&amp;via=wa</code>: el visitante aún debe pulsar enviar, así que conviene segmentarlos o excluirlos): se envía en <code>/thank-you/</code> una sola vez por envío, igual que los eventos de arriba. El activador «Página vista» sobre <code>/thank-you/</code> también funciona, pero cuenta recargas y visitas directas; si lo usas, añade la condición Page URL contiene <code>k=</code>. Clarity y Hotjar solo graban sesiones; no necesitan eventos.</p>
+          <p class="help" style="margin-top:12px">${t('int.convGtm')}</p>
         </div>
       </aside>
     </div>`;
@@ -1551,13 +1619,13 @@ async function viewIntegrations() {
   // ----- fragmentos de terceros (lista local; se persiste con Guardar) -----
   function paintSnippets() {
     const host = $('#sn-list'); if (!host) return;
-    if (!snippets.length) { host.innerHTML = '<p class="muted">Sin fragmentos todavía. Añade el primero con “+ Añadir fragmento”.</p>'; return; }
+    if (!snippets.length) { host.innerHTML = `<p class="muted">${t('sn.none')}</p>`; return; }
     host.innerHTML = snippets.map((sn, i) => `
       <div class="snippet-row ${sn.enabled ? '' : 'off'}" data-i="${i}">
-        <label class="switch" title="${sn.enabled ? 'Activo en el sitio' : 'Apagado'}"><input type="checkbox" data-k="enabled" ${sn.enabled ? 'checked' : ''}><span></span></label>
-        <div class="sn-main"><b>${esc(sn.name || 'Sin nombre')}</b><code>${esc(excerpt(sn.code))}</code></div>
-        <select class="sn-pos" data-k="position" title="Posición">${Object.entries(SNIPPET_POSITIONS).map(([k, l]) => `<option value="${k}" ${sn.position === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-        <div class="sn-act"><button class="btn btn-ghost btn-sm" data-act="edit">Editar</button><button class="btn btn-ghost btn-sm danger" data-act="del">Eliminar</button></div>
+        <label class="switch" title="${esc(sn.enabled ? t('sn.liveTitle') : t('sn.offTitle'))}"><input type="checkbox" data-k="enabled" ${sn.enabled ? 'checked' : ''}><span></span></label>
+        <div class="sn-main"><b>${esc(sn.name || t('sn.noName'))}</b><code>${esc(excerpt(sn.code))}</code></div>
+        <select class="sn-pos" data-k="position" title="${esc(t('sn.position'))}">${Object.keys(SNIPPET_POSITIONS).map((k) => `<option value="${k}" ${sn.position === k ? 'selected' : ''}>${esc(snipPosLabel(k))}</option>`).join('')}</select>
+        <div class="sn-act"><button class="btn btn-ghost btn-sm" data-act="edit">${t('common.edit')}</button><button class="btn btn-ghost btn-sm danger" data-act="del">${t('common.delete')}</button></div>
       </div>`).join('');
   }
   paintSnippets();
@@ -1571,7 +1639,7 @@ async function viewIntegrations() {
   $('#sn-list').addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     const i = Number(b.closest('.snippet-row').dataset.i); const sn = snippets[i]; if (!sn) return;
-    if (b.dataset.act === 'del') { if (!confirm(`¿Eliminar el fragmento "${sn.name || 'sin nombre'}"? Se borra al guardar.`)) return; snippets.splice(i, 1); paintSnippets(); }
+    if (b.dataset.act === 'del') { if (!confirm(t('sn.confirmDelete', { name: sn.name || t('sn.noNameLower') }))) return; snippets.splice(i, 1); paintSnippets(); }
     else openSnippetModal(sn, (upd) => { Object.assign(sn, upd); paintSnippets(); });
   });
   $('#sn-add').addEventListener('click', () => openSnippetModal(null, (sn) => { snippets.push(Object.assign({ id: newId() }, sn)); paintSnippets(); }));
@@ -1592,11 +1660,11 @@ async function viewIntegrations() {
     try {
       const saved = await api('PUT', '/api/settings', body);
       state.settings = saved && typeof saved === 'object' ? saved : Object.assign({}, state.settings, body);
-      toast('Integraciones guardadas');
+      toast(t('int.saved'));
       v.querySelectorAll('.provider:not(.rc-card)').forEach((p) => { const k = p.dataset.pv === 'google_ads' ? 'google_ads_id' : p.dataset.pv; p.classList.toggle('filled', !!body[k]); });
       paintRecaptchaCard(state.settings);
     }
-    catch (e) { if (e.message !== 'unauth') toast(e.message === 'admin only' ? 'Solo administradores' : /RECAPTCHA_SECRET/.test(e.message) ? e.message : 'Error al guardar', 'err'); }
+    catch (e) { if (e.message !== 'unauth') toast(e.code === 'admin_only' || e.message === 'admin only' ? t('int.adminOnly') : e.code === 'recaptcha_secret_in_site_key' || /RECAPTCHA_SECRET/.test(e.message) ? e.message : t('common.errSave'), 'err'); }
     btns.forEach((b) => (b.disabled = false));
   };
   // Repinta el estado del anti-spam con lo que devolvió el servidor (umbral normalizado, clave efectiva)
@@ -1610,32 +1678,32 @@ async function viewIntegrations() {
   }
   $('#int-save').addEventListener('click', save);
   $('#int-save-2').addEventListener('click', save);
-  $('#int-copy').addEventListener('click', () => navigator.clipboard.writeText(endpoint).then(() => toast('URL copiada')).catch(() => toast('No se pudo copiar', 'err')));
+  $('#int-copy').addEventListener('click', () => navigator.clipboard.writeText(endpoint).then(() => toast(t('int.urlCopied'))).catch(() => toast(t('common.errCopy'), 'err')));
 }
 
 function openSnippetModal(sn, onSave) {
   const isEdit = !!sn;
   const d = sn || { name: '', position: 'body_end', enabled: 1, code: '' };
   modal(`
-    <h2>${isEdit ? 'Editar fragmento' : 'Nuevo fragmento'}</h2>
-    <p class="desc">Pega el código tal como lo entrega el proveedor (chat, reseñas, Calendly, WhatsApp…). Se inyecta en la posición elegida en todas las páginas del sitio.</p>
+    <h2>${isEdit ? t('sn.editT') : t('sn.newT')}</h2>
+    <p class="desc">${t('sn.desc')}</p>
     <div class="form-row">
-      <div class="field"><label>Nombre</label><input id="sn-name" value="${esc(d.name)}" placeholder="Chat de Tawk.to"></div>
-      <div class="field"><label>Posición</label><select id="sn-pos">${Object.entries(SNIPPET_POSITIONS).map(([k, l]) => `<option value="${k}" ${d.position === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+      <div class="field"><label>${t('field.name')}</label><input id="sn-name" value="${esc(d.name)}" placeholder="${esc(t('sn.namePh'))}"></div>
+      <div class="field"><label>${t('sn.position')}</label><select id="sn-pos">${Object.keys(SNIPPET_POSITIONS).map((k) => `<option value="${k}" ${d.position === k ? 'selected' : ''}>${esc(snipPosLabel(k))}</option>`).join('')}</select></div>
     </div>
-    <div class="field"><label>Código</label><textarea id="sn-code" class="code" rows="9" spellcheck="false" placeholder="${esc('<script src="https://embed.tawk.to/XXXX/default" async></script>')}">${esc(d.code)}</textarea></div>
-    <label class="check-inline"><input type="checkbox" id="sn-on" ${d.enabled ? 'checked' : ''}> Activo en el sitio</label>
+    <div class="field"><label>${t('sn.code')}</label><textarea id="sn-code" class="code" rows="9" spellcheck="false" placeholder="${esc('<script src="https://embed.tawk.to/XXXX/default" async></script>')}">${esc(d.code)}</textarea></div>
+    <label class="check-inline"><input type="checkbox" id="sn-on" ${d.enabled ? 'checked' : ''}> ${t('sn.liveTitle')}</label>
     <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" id="sn-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-sm" id="sn-ok">${isEdit ? 'Aplicar' : 'Añadir'}</button>
+      <button class="btn btn-ghost btn-sm" id="sn-cancel">${t('common.cancel')}</button>
+      <button class="btn btn-primary btn-sm" id="sn-ok">${isEdit ? t('sn.apply') : t('sn.add')}</button>
     </div>`, 'wide');
   $('#sn-cancel').addEventListener('click', closeModal);
   $('#sn-ok').addEventListener('click', () => {
     const upd = { name: $('#sn-name').value.trim(), position: $('#sn-pos').value, enabled: $('#sn-on').checked ? 1 : 0, code: $('#sn-code').value };
-    if (!upd.name) { toast('Ponle un nombre al fragmento', 'err'); return; }
-    if (!upd.code.trim()) { toast('El fragmento no tiene código', 'err'); return; }
+    if (!upd.name) { toast(t('sn.needName'), 'err'); return; }
+    if (!upd.code.trim()) { toast(t('sn.needCode'), 'err'); return; }
     closeModal(); onSave(upd);
-    toast('Recuerda pulsar Guardar para aplicarlo en el sitio');
+    toast(t('sn.remember'));
   });
 }
 
@@ -1644,10 +1712,10 @@ function openSnippetModal(sn, onSave) {
 // ============================================================
 async function viewStats(month) {
   const v = $('#view');
-  v.innerHTML = `<div class="empty">Cargando…</div>`;
+  v.innerHTML = `<div class="empty">${t('common.loading')}</div>`;
   let s;
   try { s = await api('GET', '/api/stats' + (month ? `?month=${encodeURIComponent(month)}` : '')); }
-  catch (e) { if (e.message !== 'unauth') v.innerHTML = '<div class="empty">No se pudieron cargar las estadísticas.</div>'; return; }
+  catch (e) { if (e.message !== 'unauth') v.innerHTML = `<div class="empty">${t('stats.errLoad')}</div>`; return; }
   const monthly = s.monthly || [], loss = s.lossBreakdown || [], byService = s.byService || [], byCity = s.byCity || [], funnel = s.funnel || {}, k = s.kpi || {};
   const maxBar = Math.max(1, ...monthly.flatMap((m) => [m.created, m.won, m.lost]));
   const maxLoss = Math.max(1, ...loss.map((l) => l.count));
@@ -1655,23 +1723,25 @@ async function viewStats(month) {
   const maxCity = Math.max(1, ...byCity.map((x) => x.count));
   const funnelMax = Math.max(1, ...STATUSES.map((st) => Number(funnel[st]) || 0));
   const scoped = !!s.month;
-  const monthOpts = ['<option value="">Todos los meses</option>',
+  const monthOpts = [`<option value="">${t('stats.allMonths')}</option>`,
     ...(s.availableMonths || []).slice().reverse().map((m) => `<option value="${esc(m)}" ${m === s.month ? 'selected' : ''}>${fmtMonthLong(m)}</option>`)].join('');
   const num = (x) => (x === null || x === undefined || x === '' ? '—' : x);
   const kpis = [
-    ['', scoped ? 'Leads del mes' : 'Leads totales', num(k.total)],
-    scoped ? ['red', 'Perdidos', num(k.lost)] : ['blue', 'Nuevos este mes', num(k.newThisMonth)],
-    ['green', 'Ganados', num(k.won)],
-    ['green', 'Tasa de cierre', num(k.winRate), '%'],
-    ['violet', 'Tiempo medio a cotización', num(k.avgHoursToQuote), 'h'],
-    ['teal', 'SLA 24 h cumplido', num(k.slaRate), '%'],
-    ['red', 'Vencidos sin cotizar', num(k.overdue)],
+    ['', scoped ? t('stats.kMonth') : t('stats.kTotal'), num(k.total)],
+    scoped ? ['red', t('stats.kLost'), num(k.lost)] : ['blue', t('stats.kNew'), num(k.newThisMonth)],
+    ['green', t('stats.kWon'), num(k.won)],
+    ['green', t('stats.kWinRate'), num(k.winRate), '%'],
+    ['violet', t('stats.kAvgQuote'), num(k.avgHoursToQuote), 'h'],
+    ['teal', t('stats.kSla'), num(k.slaRate), '%'],
+    ['red', t('stats.kOverdue'), num(k.overdue)],
   ];
+  // Etiquetas por clave en el idioma del panel (el servidor manda las suyas en español)
+  const svcRowLabel = (x) => (x.key === 'contact' ? t('stats.contactNoService') : (svcLabel(x.key) || x.label || x.key || t('stats.noService')));
 
   v.innerHTML = `
     <div class="topbar">
-      <div><span class="ey">Análisis</span><h1>Estadísticas</h1></div>
-      <div class="tools"><label class="month-lab" for="stat-month">Filtrar por mes</label><select id="stat-month" class="month-sel">${monthOpts}</select></div>
+      <div><span class="ey">${t('stats.ey')}</span><h1>${t('stats.h1')}</h1></div>
+      <div class="tools"><label class="month-lab" for="stat-month">${t('stats.filterMonth')}</label><select id="stat-month" class="month-sel">${monthOpts}</select></div>
     </div>
 
     <div class="kpis">
@@ -1680,8 +1750,8 @@ async function viewStats(month) {
 
     <div class="stat-grid">
       <div class="card-box">
-        <h3>Evolución mensual</h3>
-        <p class="desc">Leads creados vs. ganados vs. perdidos — últimos ${monthly.length || 6} meses.</p>
+        <h3>${t('stats.monthlyT')}</h3>
+        <p class="desc">${t('stats.monthlyDesc', { n: monthly.length || 6 })}</p>
         ${monthly.length ? `<div class="chart">
           ${monthly.map((m) => `
             <div class="bar-group">
@@ -1694,26 +1764,26 @@ async function viewStats(month) {
             </div>`).join('')}
         </div>
         <div class="legend">
-          <span><i style="background:var(--blue)"></i>Creados</span>
-          <span><i style="background:var(--green)"></i>Ganados</span>
-          <span><i style="background:var(--red)"></i>Perdidos</span>
-        </div>` : '<p class="muted">Aún no hay datos mensuales.</p>'}
+          <span><i style="background:var(--blue)"></i>${t('stats.created')}</span>
+          <span><i style="background:var(--green)"></i>${t('stats.won')}</span>
+          <span><i style="background:var(--red)"></i>${t('stats.lost')}</span>
+        </div>` : `<p class="muted">${t('stats.noMonthly')}</p>`}
       </div>
 
       <div class="card-box">
-        <h3>Tasa de conversión</h3>
-        <p class="desc">% de ganados sobre resueltos (ganados + perdidos) por mes.</p>
+        <h3>${t('stats.convT')}</h3>
+        <p class="desc">${t('stats.convDesc')}</p>
         ${monthly.length ? monthly.map((m) => `
           <div class="conv-row">
             <span class="m">${esc(fmtMonth(m.month))}</span>
             <div class="conv-track"><div class="conv-fill" style="width:${Math.min(100, Number(m.conversion) || 0)}%"></div></div>
             <span class="pct">${Number(m.conversion) || 0}%</span>
-          </div>`).join('') : '<p class="muted">Sin datos.</p>'}
+          </div>`).join('') : `<p class="muted">${t('common.noData')}</p>`}
       </div>
 
       <div class="card-box">
-        <h3>${scoped ? 'Embudo del mes' : 'Embudo actual'}</h3>
-        <p class="desc">${scoped ? `Leads creados en ${fmtMonthLong(s.month)}, por estado.` : 'Distribución de todos los leads por estado.'}</p>
+        <h3>${scoped ? t('stats.funnelMonth') : t('stats.funnelNow')}</h3>
+        <p class="desc">${scoped ? t('stats.funnelMonthDesc', { m: fmtMonthLong(s.month) }) : t('stats.funnelNowDesc')}</p>
         <div class="funnel">
           ${STATUSES.map((st) => `
             <div class="fn-row">
@@ -1724,36 +1794,36 @@ async function viewStats(month) {
       </div>
 
       <div class="card-box">
-        <h3>Por servicio</h3>
-        <p class="desc">Qué piden más los clientes.</p>
+        <h3>${t('stats.bySvcT')}</h3>
+        <p class="desc">${t('stats.bySvcDesc')}</p>
         ${byService.length ? byService.map((x) => `
           <div class="dist-row">
-            <span class="lab" title="${esc(x.label || x.key)}">${esc(x.label || svcLabel(x.key) || x.key || 'Sin servicio')}</span>
+            <span class="lab" title="${esc(svcRowLabel(x))}">${esc(svcRowLabel(x))}</span>
             <div class="dist-track"><div class="dist-fill" style="width:${(x.count / maxSvc) * 100}%"></div></div>
             <span class="n">${Number(x.count) || 0}</span>
-          </div>`).join('') : '<p class="muted">Sin datos.</p>'}
+          </div>`).join('') : `<p class="muted">${t('common.noData')}</p>`}
       </div>
 
       <div class="card-box">
-        <h3>Por ciudad</h3>
-        <p class="desc">De dónde llegan las solicitudes.</p>
+        <h3>${t('stats.byCityT')}</h3>
+        <p class="desc">${t('stats.byCityDesc')}</p>
         ${byCity.length ? byCity.map((x) => `
           <div class="dist-row">
-            <span class="lab" title="${esc(x.city || '')}">${esc(x.city || 'Sin ciudad')}</span>
+            <span class="lab" title="${esc(x.city || '')}">${esc(x.city || t('stats.noCity'))}</span>
             <div class="dist-track"><div class="dist-fill navy" style="width:${(x.count / maxCity) * 100}%"></div></div>
             <span class="n">${Number(x.count) || 0}</span>
-          </div>`).join('') : '<p class="muted">Sin datos.</p>'}
+          </div>`).join('') : `<p class="muted">${t('common.noData')}</p>`}
       </div>
 
       <div class="card-box">
-        <h3>Motivos de pérdida</h3>
-        <p class="desc">Por qué se pierden los leads.</p>
+        <h3>${t('stats.lossT')}</h3>
+        <p class="desc">${t('stats.lossDesc')}</p>
         ${loss.length ? loss.map((l) => `
           <div class="loss-row">
-            <span class="lab">${esc(l.label || lossLabel(l.key || l.reason))}</span>
+            <span class="lab">${esc(lossLabel(l.key || l.reason) || l.label)}</span>
             <div class="loss-track"><div class="loss-fill" style="width:${(l.count / maxLoss) * 100}%"></div></div>
             <span class="n">${Number(l.count) || 0}</span>
-          </div>`).join('') : '<p class="muted">Aún no hay leads perdidos.</p>'}
+          </div>`).join('') : `<p class="muted">${t('stats.noLost')}</p>`}
       </div>
     </div>`;
 
@@ -1784,11 +1854,16 @@ async function loadSpamLeads() {
   window.addEventListener('hashchange', () => { if (!state.me) renderLogin(); });
   try { state.me = await api('GET', '/api/me'); }
   catch (e) { if (e.message !== 'unauth') renderLogin(); return; } // 401 ya pintó el login
+  // Con sesión manda el idioma guardado en el usuario (users.lang). En «Entrar como», /api/me devuelve el idioma
+  // de la persona real (el administrador), así que el panel no cambia de idioma al ayudar a otro usuario.
+  if (state.me && LANGS.includes(state.me.lang) && state.me.lang !== LANG) {
+    LANG = state.me.lang; storeLang(LANG); document.documentElement.lang = LANG;
+  }
   try { state.meta = await api('GET', '/api/meta'); } catch (e) { state.meta = null; }
   // El comercial no puede listar usuarios: los selectores de responsable caen a "yo mismo"
   try { state.users = (await api('GET', '/api/users')) || []; } catch (e) { state.users = []; }
   if (isAdmin()) { try { state.settings = await api('GET', '/api/settings'); } catch (e) { state.settings = null; } }
-  try { await loadLeads(); } catch (e) { if (e.message === 'unauth') return; state.leads = []; toast('No se pudieron cargar los leads', 'err'); }
+  try { await loadLeads(); } catch (e) { if (e.message === 'unauth') return; state.leads = []; toast(t('boot.errLeads'), 'err'); }
   window.addEventListener('hashchange', syncHash);
   syncHash(); // fija la vista desde el hash (o kanban por defecto) y renderiza
   startPolling();
